@@ -1,13 +1,14 @@
 # BCI Speller using EEG (Quick-20 Dry Headset from Cognionics Inc.)
 # General imports
-import os
+import time
 import glob
 import numpy as np
+import matplotlib.pyplot as plt
 # Stimuli Imports
 import psychopy as pp
 # Custom imports
-from functions import list_gen, save_labels, stamp_check, folder_gen
-from classes_main import LslStream, LslBuffer, EmojiStimulus, LslMarkers
+from functions import list_gen, save_labels, stamp_check, folder_gen, name_gen, net_streams
+from classes_main import LslStream, LslBuffer, EmojiStimulus, LslMarker
 
 '''
     Main Experiment.
@@ -33,8 +34,8 @@ from classes_main import LslStream, LslBuffer, EmojiStimulus, LslMarkers
 '''
 
 
-# Main #
 if __name__ == '__main__':
+    '=====================================================================================EEG + IMP STREAM'
     # CONNECTION TO STREAM #
     print('-- STREAM CONNECTION --')
     # Connect to the stream and create the stream handle
@@ -48,37 +49,57 @@ if __name__ == '__main__':
     # Get the nominal sampling rate (rate at which the server sends information)
     srate = data_stream.inlet.info().nominal_srate()
     print('The sampling rate is: {0} \n'.format(srate))
-
-    # GENERATE MARKER STREAM #
-    LslMarkers()
-
-    # STIMULUS INITIALISATION #
+    '===============================================================================GENERATE MARKER STREAM'
+    # List all streams on network.
+    net_streams()
+    'Pushing.'
+    # Create Marker Outlet.
+    stream_name = name_gen(10)
+    source_name = name_gen(10)
+    marker_outlet = LslMarker(name=stream_name, type='Markers', channel_count=1, nominal_srate=0,
+                              channel_format='string', source_id=source_name)
+    # Pause for Marker Outlet Initialization.
+    time.sleep(1)
+    'Pulling.'
+    # Connect to Marker Stream.
+    marker_inlet = LslStream(type='Markers')
+    print('Marker Inlet Generated: ', marker_inlet)
+    print('Puller Active...')
+    'Initialize'
+    marker_outlet.push(marker='Init')
+    init_mark, init_time = marker_inlet.pull(timeout=1)
+    print('Init Mark: ', init_mark, 'Init Time: ', init_time)
+    'Marker Array Aggregates.'
+    tr_sample1 = []
+    tr_timestamp1 = []
+    tr_sample2 = []
+    tr_timestamp2 = []
+    '============================================================================STIMULUS INITIALISATION'
     print('-- STIMULUS SETUP -- ')
     emoji_list = glob.glob('SVGs\Exp_Stim\All\\*.png')
     num_emoji = np.int(len(emoji_list) / 2)
     # Experimental Durations
-    pres_duration = 1
-    aug_duration = 0.5  # Duration of the augmentation on screen
-    aug_wait = 0.5  # Temporal distance between augmentations
-    inter_trial_int = 0.5
-    inter_seq_interval = 0.5
-    cue_interval = 0.5
+    pres_duration = 0.25  # 1
+    aug_duration = 0.125  # 0.5  # Duration of the augmentation on screen
+    aug_wait = 0.125  # 0.5  # Temporal distance between augmentations
+    inter_trial_int = 0.125  # 0.5
+    inter_seq_interval = 0.125  # 0.5
+    cue_interval = 0.125  # 0.5
     # Experimental Sequences and Trials
     seq_number = 5
-    num_trials = 1
-    num_iter = 50
+    num_trials = 7
+    num_iter = 1000
     # Dynamic Variables
     aug = 'Invert'
     init = 'Exp'
     info = 'Details'
     window_scaling = 0.5
     stimulus_scaling = 'Medium'
-
+    '===============================================================================RANDOMISATION LISTS'
     print('----Generating non-consecutive randomised augmentation lists... \n')
     aug_list = list_gen(num_emoji, seq_number, num_trials, num_iter)
     print('----Completed non-consecutive randomised augmentation lists.')
     print('----Aug List DIMS: ', np.shape(aug_list))
-
     'Initializing Stimuli Class Object'
     estimulus = EmojiStimulus()
     estimulus.__init__(aug, init, info, window_scaling, stimulus_scaling)
@@ -88,18 +109,15 @@ if __name__ == '__main__':
     # Generate randomised order for presentation of fixation cue.
     print('Initializing fixation shuffling sequence...')
     estimulus.cue_shuffle()
-
     'Print Useful Info'
     print('Duration of each sequence: {0}ms'.format(estimulus.sequence_duration * 1000))
     ammount = int(np.ceil(estimulus.sequence_duration * srate))
     print('Ammount of samples per sequence: {0}'.format(ammount))
-
     'Create Data and Labels Directories.'
     folder_gen('./Data/P_3Data/', './Data/P_3Data/Labels')
     data_direc = './Data/P_3Data/'
     lab_direc = './Data/P_3Data/Labels/'
-
-    'BUFFER INITIALIZATION'
+    '==========================================================================BUFFER INITIALIZATION'
     'DATA BUFFER: Samples holding.'
     buffer = LslBuffer()
     # 1st array now full due to these additions.
@@ -107,6 +125,8 @@ if __name__ == '__main__':
     pp.clock.wait(1)
     data_stream.chunk()
     data_stream.connect
+    init_eeg = np.asarray(buffer.take_old(ammount * 2, delete=False, filename='init_eeg'))
+    print('Data DIMS: ', np.shape(init_eeg))
     'IMP BUFFER: Impedances holding.'
     buffer = LslBuffer()
     # 1st array now full due to these additions.
@@ -115,14 +135,11 @@ if __name__ == '__main__':
     impedances_stream.chunk()
     impedances_stream.connect
     imp_buffer = LslBuffer()
-
     # Initializing Data Naming Formatter.
     namer = []
-
-    # START THE EXPERIMENT #
+    '==============================================================================START EXPERIMENT'
     print('\n -- EXPERIMENT STARTING --')
     prediction_list = []
-    # Tell the stream to start
     for t in range(estimulus.num_trials):
         print('Trial:', str(t + 1))
         # Establish data naming index.
@@ -136,40 +153,44 @@ if __name__ == '__main__':
             namer = ''
         for s in range(estimulus.num_seq):
             # Play sequence number s according to aug_shuffle
-            estimulus.play_seq(s, t, aug)
+            seq_sample1, seq_timestamp1, seq_sample2, seq_timestamp2 = estimulus.play_seq(
+                s, t, aug, marker_outlet, marker_inlet)
+            # Add Marker Data to aggregate array.
+            tr_sample1 = np.append(tr_sample1, seq_sample1)
+            tr_timestamp1 = np.append(tr_timestamp1, seq_timestamp1)
+            tr_sample2 = np.append(tr_sample2, seq_sample2)
+            tr_timestamp2 = np.append(tr_timestamp2, seq_timestamp2)
+            print('Tr Sample 1 DIMS: ', np.shape(tr_sample1))
             # Read the data during the sequence (giving some room for error)
             buffer.add(data_stream.chunk(max_samples=ammount))
             imp_buffer.add(impedances_stream.chunk(max_samples=ammount))
-            # if s == 0:
-            #     data = np.asarray(buffer.take_old(
-            #         ammount, delete=False, filename='voltages_t{2}{0}_s{1}_'.format(t + 1, s + 1, namer)))
-            #     imp_buffer.take_old(
-            #         ammount, delete=False, filename='impedances_t{2}{0}_s{1}_'.format(t + 1, s + 1, namer))
-            #     print('Sequence {0} / Duration: {1} | Data DIMS: {2}'.format(
-            #         s + 1, np.round_(stamp_check(data)), np.shape(data)))
-            # Save just the last part of the data (the one that has to belong to the trial)
-            if s == s:
-                data = np.asarray(buffer.take_new(
-                    ammount, delete=True, filename='voltages_t{2}{0}_s{1}_'.format(t + 1, s + 1, namer)))
-                imp_buffer.take_new(
-                    ammount, delete=True, filename='impedances_t{2}{0}_s{1}_'.format(t + 1, s + 1, namer))
+            # Add Data and Impedances values to variables.
+            if s == 0:
+                data = np.asarray(buffer.take_old(
+                    ammount, delete=False, filename='voltages_t{2}{0}_s{1}_'.format(t + 1, s + 1, namer)))
+                imp = np.asarray(imp_buffer.take_old(
+                    ammount, delete=False, filename='impedances_t{2}{0}_s{1}_'.format(t + 1, s + 1, namer)))
                 print('Sequence {0} / Duration: {1} | Data DIMS: {2}'.format(
                     s + 1, np.round_(stamp_check(data)), np.shape(data)))
-            '-------------------------------------------'
+            # Save just the last part of the data(the one that has to belong to the trial)
+            if s > 0:
+                data = np.asarray(buffer.take_new(
+                    ammount, delete=True, filename='voltages_t{2}{0}_s{1}_'.format(t + 1, s + 1, namer)))
+                imp = np.asarray(imp_buffer.take_new(
+                    ammount, delete=True, filename='impedances_t{2}{0}_s{1}_'.format(t + 1, s + 1, namer)))
+                print('Sequence {0} / Duration: {1} | Data DIMS: {2}'.format(
+                    s + 1, np.round_(stamp_check(data)), np.shape(data)))
             'Sequential Prediction'
             prediction_list.append(4)
-        '-------------------------------------------'
         'Trial Prediction'
         # Here we would cramp all the single choices into a final one
         final_prediction = prediction_list[0]
         # Shuffle again the augmentations
         estimulus.shuffle()
-        '-------------------------------------------'
         'Label Saving: .npy'
         save_file_name = '{0}_trial_labels'.format(t + 1)
         save_labels(t + 1, lab_direc, save_file_name, estimulus.fix_shuffle[t], estimulus.fix_shuffle,
                     estimulus.num_trials, estimulus.aug_non_con[:, :, t], estimulus.num_seq, estimulus.num_emoji)
-        '-------------------------------------------'
         'Data Saving: .npz'
         # Zip the EEG data files
         buffer.zip()
@@ -179,3 +200,14 @@ if __name__ == '__main__':
         imp_buffer.clear(names=True)
     # Close everything
     estimulus.quit()
+    # Delete Outlet Stream.
+    marker_outlet.outlet_del()
+    # Delete Inlet Stream.
+    marker_inlet.inlet_del()
+    # Marker Check
+    print(tr_sample1)
+    print(tr_timestamp1)
+    print(tr_sample2)
+    print(tr_timestamp2)
+    marker_file = './Data/P_3Data/marker_data.npz'
+    np.savez(marker_file, tr_sample1, tr_timestamp1, tr_sample2, tr_timestamp2)

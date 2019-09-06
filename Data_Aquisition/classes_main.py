@@ -4,7 +4,6 @@ from pylsl import StreamInlet, resolve_stream
 from psychopy import visual, core, clock
 # General imports
 import os
-import sys
 import glob
 import numpy as np
 from datetime import datetime
@@ -12,10 +11,7 @@ import platform
 if platform.architecture()[1][:7] == 'Windows':
     from win32api import GetSystemMetrics
 # Marker imports
-import time
-import random
 from pylsl import StreamInfo, StreamOutlet
-
 # Pytorch imports
 # from torch.utils.data import Dataset
 
@@ -94,8 +90,7 @@ class Stimuli(object):
 
 
 class LslMarker(object):
-
-    '''
+    """
     First create a new stream info (here we set the name to MyMarkerStream,
     the content-type to Markers, 1 channel, irregular sampling rate,
     and string-valued data) The last value would be the locally unique
@@ -106,56 +101,62 @@ class LslMarker(object):
     to interpret the content.
 
     stream_info = Name / Type / Channel Count / Nominal SRate / Format / Stream ID.
+    e.g. 'MyMarkerStream', 'Markers', 1, 0, 'string', 'myuidw43536'
 
-    '''
+    """
 
-    def __init__(self, **stream_info):
-        self.marker_gen(**stream_info)
+    def __init__(self, **kwargs):
+        self.marker_gen(**kwargs)
 
-    def marker_gen(self, **stream_info):
+    def marker_gen(self, **kwargs):
+
         # Put the known information of the stream in a tuple. It is better to know as much
         # as possible if more than one kit is running LSL at the same time.
-        stream_info_list = []
-        for key, val in stream_info.items():
-            stream_info_list.append(val)
-            # print('Val: ', val)
+        kwargs_list_info = []
+        for key, val in kwargs.items():
+            kwargs_list_info.append(val)
+
+        name = kwargs_list_info[0]
+        type = kwargs_list_info[1]
+        channel_count = kwargs_list_info[2]
+        nominal_srate = kwargs_list_info[3]
+        channel_format = kwargs_list_info[4]
+        source_id = kwargs_list_info[5]
+
+        print('Stream Info List: ', name, type, channel_count, nominal_srate,
+              channel_format, source_id)
 
         # The StreamInfo object stores the declaration of a data stream.
-        self.info = StreamInfo(*stream_info_list)
-        # print('Self INFO: ', self.info)
-
+        self.info = StreamInfo(name, type, channel_count, nominal_srate,
+                               channel_format, source_id)
         # Create Outlet.
         self.outlet = StreamOutlet(self.info)
-        # print('Outlet OG: ', self.outlet)
-
-    def constant_mark(self, outlet):
-        # Send constant stream of markers.
-        while True:
-            # pick a sample to send an wait for a bit
-            markernames = ['0', '1', '2', '3', '4', '5', '6']
-            marker_choice = [random.choice(markernames)]
-            outlet.push_sample(marker_choice)
-            time_step = 1
-            time.sleep(time_step)
 
     def push(self, **kwargs):
-        '''
+        """
         Pushes emoji label into marker stream for time tagging of onset and offset of each ERP event.
-        marker_ind must be in **kwargs.
+        marker_ind must be in kwargs.
 
         INPUT:
             kwargs: Extra specifications for the data push from the stream
 
         OUTPUT:
             the label marker into the marker_stream
-        '''
+        """
 
-        marker = 'Inside'
+        kwargs_marker = []
+        for key, val in kwargs.items():
+            kwargs_marker.append(val)
+
+        marker = kwargs_marker[0]
         self.outlet.push_sample([marker])
+
+    def outlet_del(self):
+        self.outlet.__del__()
 
 
 class LslStream(object):
-    '''
+    """
     This class creates the basic connection between the computer and a Lab Streaming
     Layer data stream. With it connecting is made simpler and pulling and processing
     information directly is made trivial.
@@ -171,13 +172,13 @@ class LslStream(object):
         streams: List of found LSL streams in the network
         inlet: Stream inlet used to pull data from the stream
         metainfo: Metadata from the stream
-    '''
+    """
 
     def __init__(self, **stream_info):
         self.connect(**stream_info)
 
     def connect(self, **stream_info):
-        '''
+        """
         This method connects to a LSL data stream. It accepts keyword arguments that define
         the data stream we are searching. Normally this would be (use keywords given between
         quotes as key for the argument) 'name' (e.g. 'Cognionics Quick-20'), 'type' (e.g. 'EEG'),
@@ -195,7 +196,7 @@ class LslStream(object):
 
         RELATED ATTRIBUTES:
             streams, inlet, metainfo
-        '''
+        """
         # Put the known information of the stream in a tuple. It is better to know as much
         # as possible if more than one kit is running LSL at the same time.
         stream_info_list = []
@@ -213,7 +214,7 @@ class LslStream(object):
         self.metainfo = self.inlet.info()
 
     def pull(self, **kwargs):
-        '''
+        """
         This method pulls data from the connected stream (using more information
         for the pull as given by kwargs).
 
@@ -222,16 +223,39 @@ class LslStream(object):
 
         OUTPUT:
             the data from the stream
-        '''
+        """
         # Retrieve data from the data stream
         return self.inlet.pull_sample(**kwargs)
 
+    def init_pull(self, **kwargs):
+        """
+        This serves as a sacrificial initialization pull to get the streaming going.
+        This method pulls data from the connected stream (using more information
+        for the pull as given by kwargs).
+
+        INPUT:
+            kwargs: Extra specifications for the data pull from the stream
+
+        OUTPUT:
+            the data from the stream
+        """
+
+        print('Marker Stream Initializarion Pull: ', self.inlet.pull_sample(**kwargs))
+
     def chunk(self, **kwargs):
-        '''
+        """
         This method pulls chunks. Uses sames formating as .pull
-        '''
+        """
         # chunk, timestamp = self.inlet.pull_chunk(**kwargs)
         return self.inlet.pull_chunk(**kwargs)
+
+    def mark_check(self, **kwargs):
+        # Available Markers.
+        ava_markers = self.inlet.samples_available()
+        print('Available Markers: ', ava_markers)
+
+    def inlet_del(self, **kwargs):
+        self.inlet.__del__()
 
 
 class LslBuffer(object):
@@ -280,7 +304,7 @@ class LslBuffer(object):
             self.save(imax=ammount)
 
         # Delete data taken if asked
-        if delete == True:
+        if delete is True:
             return_ = self.items[:ammount]
             self.items = self.items[ammount:]
             return return_
@@ -298,7 +322,7 @@ class LslBuffer(object):
             self.save(imin=ammount)
 
         # Delete data taken if asked
-        if delete == True:
+        if delete is True:
             return_ = self.items[-ammount:]
             self.items = self.items[:ammount]
             return return_
@@ -311,7 +335,7 @@ class LslBuffer(object):
 
     def clear(self, names=False):
         self.items = []
-        if names == True:
+        if names is True:
             self.save_names = []
 
     def save(self, **kwargs):
@@ -327,7 +351,7 @@ class LslBuffer(object):
 
         time_string = datetime.now().strftime('%y%m%d_%H%M%S%f')
         if 'filename' in kwargs:
-            if 'timestamp' in kwargs and kwargs['timestamp'] == False:
+            if 'timestamp' in kwargs and kwargs['timestamp'] is False:
                 file_name = kwargs['filename']
             else:
                 file_name = kwargs['filename'] + time_string
@@ -367,7 +391,7 @@ class LslBuffer(object):
             arrays.append(np.load(name + '.npy'))
             os.remove(name + '.npy')
 
-        if compress == False:
+        if compress is False:
             np.savez(self.save_names[0], *arrays)
         else:
             np.savez_compressed(self.save_names[0], *arrays)
@@ -584,7 +608,7 @@ class EmojiStimulus(object):
         np.random.shuffle(cue_list)
         self.fix_shuffle = cue_list
 
-    def play_emoji_inv(self, e, s, t):
+    def play_emoji_inv(self, e, s, t, marker_outlet, marker_inlet):
         ''' Draw emoji augmentation from sequence s and emoji e'''
         # Draw fixation
         fix_dis = self.emoji_size / 2
@@ -607,13 +631,17 @@ class EmojiStimulus(object):
             # print('Cue Time')
             self.window.flip()
             clock.wait(self.cue_int)
+        # Marker for labelling and time-stamping.
+        marker_rand = np.array2string(self.aug_non_con[e, s, t])
+        # Push and Pull Marker Denoting Start of Emoji augmentation.
+        marker_outlet.push(marker=marker_rand)
+        sample1, timestamp1 = marker_inlet.pull(timeout=1)
         # Position and Draw Cue.
         self.stimuli.items[-1].pos = (
             self.imXaxis[self.fix_shuffle[t]], -fix_dis)
         self.stimuli.draw_one(-1)
         # Draw emoji.
         self.stimuli.draw_int(0, self.num_emoji)
-
         'Aug List Technique'
         # Position and Invert Emoji
         em_pos = self.aug_non_con[e, s, t] + self.num_emoji
@@ -634,8 +662,12 @@ class EmojiStimulus(object):
         self.window.flip()
         # Pause aug_wait time
         clock.wait(self.aug_wait)
+        # Push and Pull Marker Denoting Start of Emoji augmentation.
+        marker_outlet.push(marker=marker_rand)
+        sample2, timestamp2 = marker_inlet.pull(timeout=1)
+        return sample1, timestamp1, sample2, timestamp2
 
-    def play_emoji_fl(self, e, s, t):
+    def play_emoji_fl(self, e, s, t, marker_outlet, marker_inlet):
         ''' Draw emoji augmentation from sequence s and emoji e'''
         # Draw fixation
         fix_dis = self.emoji_size / 2
@@ -657,13 +689,17 @@ class EmojiStimulus(object):
             # Flip Screen, wait as it's the first cue to appear in sequence.
             self.window.flip()
             clock.wait(self.cue_int)
+        # Marker for labelling and time-stamping.
+        marker_rand = np.array2string(self.aug_non_con[e, s, t])
+        # Push and Pull Marker Denoting Start of Emoji augmentation.
+        marker_outlet.push(marker=marker_rand)
+        sample1, timestamp1 = marker_inlet.pull(timeout=1)
         # Position and Draw Cue.
         self.stimuli.items[-2].pos = (
             self.imXaxis[self.fix_shuffle[t]], -fix_dis)
         self.stimuli.draw_one(-2)
         # Draw emoji.
         self.stimuli.draw_int(0, self.num_emoji)
-
         'Aug List Technique'
         # Position and Flash Emoji
         em_pos = -1
@@ -674,7 +710,6 @@ class EmojiStimulus(object):
         self.window.flip()
         # Wait the aug_dur time
         clock.wait(self.aug_dur)
-
         # Position and Draw Cue.
         self.stimuli.items[-2].pos = (
             self.imXaxis[self.fix_shuffle[t]], -fix_dis)
@@ -685,17 +720,48 @@ class EmojiStimulus(object):
         self.window.flip()
         # Pause aug_wait time
         clock.wait(self.aug_wait)
+        # Push and Pull Marker Denoting Start of Emoji augmentation.
+        marker_outlet.push(marker=marker_rand)
+        sample2, timestamp2 = marker_inlet.pull(timeout=1)
+        return sample1, timestamp1, sample2, timestamp2
 
-    def play_seq(self, s, t, aug):
+    def play_seq(self, s, t, aug, marker_outlet, marker_inlet):
         ''' Play sequence number s as aug_shuffle is ordered '''
+        seq_sample1 = []
+        seq_timestamp1 = []
+        seq_sample2 = []
+        seq_timestamp2 = []
         if aug == 'Invert':
             for e in range(self.num_emoji):
-                self.play_emoji_inv(e, s, t)
+                if e == 0 and t == 0 and s == 0:
+                    'Initialize'
+                    marker_outlet.push(marker='Init')
+                    init_mark, init_time = marker_inlet.pull(timeout=1)
+                    print('Init Mark: ', init_mark, 'Init Time: ', init_time)
+                sample1, timestamp1, sample2, timestamp2 = self.play_emoji_inv(
+                    e, s, t, marker_outlet, marker_inlet)
+                # Marker Variables.
+                seq_sample1 = np.append(seq_sample1, sample1)
+                seq_timestamp1 = np.append(seq_timestamp1, timestamp1)
+                seq_sample2 = np.append(seq_sample2, sample2)
+                seq_timestamp2 = np.append(seq_timestamp2, timestamp2)
             clock.wait(self.iseqi)
         if aug == 'Flash':
             for e in range(self.num_emoji):
-                self.play_emoji_fl(e, s, t)
+                if e == 0 and t == 0 and s == 0:
+                    'Initialize'
+                    marker_outlet.push(marker='Init')
+                    init_mark, init_time = marker_inlet.pull(timeout=1)
+                    print('Init Mark: ', init_mark, 'Init Time: ', init_time)
+                sample1, timestamp1, sample2, timestamp2 = self.play_emoji_fl(
+                    e, s, t, marker_outlet, marker_inlet)
+                # Marker Variables.
+                seq_sample1 = np.append(seq_sample1, sample1)
+                seq_timestamp1 = np.append(seq_timestamp1, timestamp1)
+                seq_sample2 = np.append(seq_sample2, sample2)
+                seq_timestamp2 = np.append(seq_timestamp2, timestamp2)
             clock.wait(self.iseqi)
+        return seq_sample1, seq_timestamp1, seq_sample2, seq_timestamp2
 
 
 def erp_code():

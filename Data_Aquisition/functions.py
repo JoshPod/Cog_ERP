@@ -1,6 +1,35 @@
 # System import
 import sys
+import time
+import random
 import numpy as np
+from pylsl import resolve_streams, resolve_stream, resolve_byprop, StreamInlet, StreamInfo, StreamOutlet
+
+
+def name_gen(num_vals):
+    # Source ID Randomised Namer.
+    """Generate a random string of fixed length """
+    values = np.random.randint(9, size=num_vals)
+    source = np.array2string(values, precision=0, separator='', suppress_small=True)
+    return source
+
+
+def net_streams():
+    net_streams = resolve_streams(wait_time=1.0)
+    if len(net_streams) > 1:
+        for i in range(len(net_streams)):
+            print('Net Stream: ', i + 1, net_streams[i])
+        return 'Many Streams.'
+    elif len(net_streams) == 1:
+        print('Single Network Stream: ', net_streams)
+        return 'Single Stream.'
+    elif len(net_streams) is None:
+        print('No streams on network..')
+
+
+def marker_gen():
+    # Generate random marker to test lsl pull/ push.
+    return random.choice(['0', '1', '2', '3', '4', '5', '6'])
 
 
 def dict_bash_kwargs():
