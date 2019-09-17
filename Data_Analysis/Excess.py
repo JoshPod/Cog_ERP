@@ -1,79 +1,43 @@
+import os
 import numpy as np
-import ProBoy as pb
-from sklearn import datasets
 import matplotlib.pyplot as plt
-from sklearn.decomposition import PCA
-from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
 
-# Dataswitcher.
-dataswitch = 0
 
-if dataswitch == 0:
-    # Original Data.
-    iris = datasets.load_iris()
-    X = iris.data
-    y = iris.target
-    target_names = iris.target_names
-    print('X DIMS: ', X.shape, '\n', X[0:4, :])
-    print('y DIMS: ', y.shape, y[0:4])
-    print('Names DIMS: ', target_names.shape, target_names[0:4])
-    # Plotting.
-    colors = ['navy', 'turquoise', 'darkorange']
-    if dataswitch == 1:
-        # Random Data.
-        X = np.random.random_sample((150, 4)) - 5
-elif dataswitch == 2:
-    # EEG Dataloading.
-    seg = './Seg_Data/seg_data3.npz'
-    database = np.load(seg)
-    data = database['arr_0']
-    data = np.squeeze(data)
-    X = np.swapaxes(data, 0, 1)
-    label = database['arr_1']
-    y = label.astype(int)
-    print('DATA DIMS: ', data.shape)
-    target_names = np.array(['P300', 'NP300'])
-    # Info.
-    print('X DIMS: ', X.shape, '\n')
-    print('y DIMS: ', y.shape)
-    print('Names DIMS: ', target_names.shape, target_names[0:4])
-    # Plotting.
-    colors = ['navy', 'darkorange']
+def interp2D(data, timestamps, output_size, plotter, verbose):
+    # Resamples 2D data matrices of Samples x Channels via interpolation to produce uniform output matrices of output size x channels.
 
-# Plotting
-colors_n = np.arange(len(target_names))
+    # Calcualte number of chans.
+    a, b = np.shape(data)
+    num_chans = np.minimum(a, b)
 
-'-----PCA-----'
-pca_ex = 1
-if pca_ex == 1:
-    pca = PCA(n_components=2)
-    X_r = pca.fit(X).transform(X)
-    print('X_r DIMS: ', X_r.shape)
-    # Percentage of variance explained for each components
-    print('explained variance ratio (first two components): %s'
-          % str(pca.explained_variance_ratio_))
-    # Plots
-    plt.figure()
-    lw = 2
-    for color, i, target_name in zip(colors, colors_n, target_names):
-        plt.scatter(X_r[y == i, 0], X_r[y == i, 1], color=color, alpha=.8, lw=lw,
-                    label=target_name)
-    plt.legend(loc='best', shadow=False, scatterpoints=1)
-    plt.title('PCA of IRIS dataset')
-    plt.show()
+    # Gen place-holder for resampled data.
+    r_data = np.zeros(output_size, num_chans)
+    r_time = np.linspace(0, 0.5, output_size)
 
-'-----LDA-----'
-lda_ex = 1
-if lda_ex == 1:
-    lda = LinearDiscriminantAnalysis(n_components=2)
-    lda = LinearDiscriminantAnalysis(solver='svd', n_components=2)
-    X_r2 = lda.fit(X, y).transform(X)
-    print('X_r2 DIMS: ', X_r2.shape, X_r2[0:4, 0])
-    # Plots
-    plt.figure()
-    for color, i, target_name in zip(colors, colors_n, target_names):
-        plt.scatter(X_r2[y == i, 0], X_r2[y == i, 1], alpha=.8, color=color,
-                    label=target_name)
-    plt.legend(loc='best', shadow=False, scatterpoints=1)
-    plt.title('LDA of IRIS dataset')
-    plt.show()
+    for k in range(num_chans):
+        # Interpolate Data and Sub-Plot.
+        yinterp = np.interp(r_time, timestamps, data[:, k])
+        # Aggregate Resampled Channel Data and Timestamps.
+        r_data[:, k] = yinterp
+
+        # Plots
+        if plotter == 1:
+            # Sub-Plot Non-Resampled Channel Chk
+            plt.subplot(2, 1, 1)
+            plt.plot(timestamps, data[:, k])
+            # Sub-Plot Resampled Channel Chk
+            plt.subplot(2, 1, 2)
+            plt.plot(r_time, yinterp)
+            plt.show()
+        if verbose == 1:
+            print('Original Chk DIMS: ', data[:, k].shape,
+                  'Resampled Chk Dims: ', yinterp.shape)
+
+    return r_data, r_time
+
+
+data = np.random.rand(250, 7)
+a, b = np.shape(data)
+num_chans = np.minimum(a, b)
+
+print(num_chans)

@@ -25,6 +25,40 @@ import matplotlib.pyplot as plt
 'Ctrl + Alt + Shift + [ = Collapse all functions'
 
 
+def interp2D(data, timestamps, output_size, plotter, verbose):
+    # Resamples 2D data matrices of Samples x Channels via interpolation to produce uniform output matrices of output size x channels.
+
+    # Calcualte number of chans.
+    a, b = np.shape(data)
+    num_chans = np.minimum(a, b)
+    # Gen place-holder for resampled data.
+    r_data = np.zeros((output_size, num_chans))
+    r_time = np.linspace(0, 0.5, output_size)
+
+    for k in range(num_chans):
+        # Interpolate Data and Sub-Plot.
+        yinterp = np.interp(r_time, timestamps, data[:, k])
+        # Aggregate Resampled Channel Data and Timestamps.
+        r_data[:, k] = yinterp
+
+        # Plots
+        if plotter == 1:
+            # Sub-Plot Non-Resampled Channel Chk
+            plt.subplot(2, 1, 1)
+            plt.plot(timestamps, data[:, k])
+            plt.title('Orignal Signal With Inconsistent Timestamps.')
+            # Sub-Plot Resampled Channel Chk
+            plt.subplot(2, 1, 2)
+            plt.plot(r_time, yinterp)
+            plt.title('Signal Post-Interpolation Method Resampling.')
+            plt.show()
+        if verbose == 1:
+            print('Original Chk DIMS: ', data[:, k].shape,
+                  'Resampled Chk Dims: ', yinterp.shape)
+
+    return r_data, r_time
+
+
 def is_odd(num):
     return num % 2
 
@@ -599,7 +633,7 @@ def zero_mean(data):
     # Preform zero array.
     zero_data = np.zeros((a, b))
     for i in range(b):
-        zero_data[:, i] = data[:, i]-np.mean(data[:, i])
+        zero_data[:, i] = data[:, i] - np.mean(data[:, i])
     return zero_data
 
 
@@ -615,7 +649,7 @@ def zerodat(data):
     # Preform zero array.
     zero_data = np.zeros((a, b))
     for i in range(b):
-        zero_data[:, i] = data[:, i]-data[0, i]
+        zero_data[:, i] = data[:, i] - data[0, i]
     return zero_data
 
 
