@@ -473,15 +473,10 @@ class EmojiStimulus(object):
         ''' Draw emoji augmentation from sequence s and emoji e'''
         # Draw fixation
         fix_dis = self.emoji_size / 2
-        if s == 0 and e == 0:
-            # Initialization Period for 1st Sequence 1st Emoji.
+        if t == 0 and s == 0 and e == 0:
+            # Initialization Period for 1st Trial, 1st Sequence, 1st Emoji.
             clock.wait(self.pres_dur)
-            # Position and Draw Cue.
-            self.stimuli.items[-1].pos = (
-                self.imXaxis[self.fix_shuffle[t]], -fix_dis)
-            self.stimuli.draw_one(-1)
-            self.window.flip()
-            clock.wait(self.cue_int)
+        if s == 0 and e == 0:
             # Position and Draw Cue.
             self.stimuli.items[-1].pos = (
                 self.imXaxis[self.fix_shuffle[t]], -fix_dis)
@@ -543,15 +538,10 @@ class EmojiStimulus(object):
         ''' Draw emoji augmentation from sequence s and emoji e'''
         # Draw fixation
         fix_dis = self.emoji_size / 2
-        if s == 0 and e == 0:
-            # Initialization Period for 1st Sequence 1st Emoji.
+        if t == 0 and s == 0 and e == 0:
+            # Initialization Period for 1st Trial, 1st Sequence, 1st Emoji.
             clock.wait(self.pres_dur)
-            # Position and Draw Cue.
-            self.stimuli.items[-2].pos = (
-                self.imXaxis[self.fix_shuffle[t]], -fix_dis)
-            self.stimuli.draw_one(-2)
-            self.window.flip()
-            clock.wait(self.cue_int)
+        if s == 0 and e == 0:
             # Position and Draw Cue.
             self.stimuli.items[-2].pos = (
                 self.imXaxis[self.fix_shuffle[t]], -fix_dis)

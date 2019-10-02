@@ -79,22 +79,22 @@ if __name__ == '__main__':
     emoji_list = glob.glob('SVGs\Exp_Stim\All\\*.png')
     num_emoji = np.int(len(emoji_list) / 2)
     # Experimental Durations
-    pres_duration = 0.25  # 1
+    pres_duration = 1  # 1  # Duration of very 1st initial cue presenetation
     aug_duration = 0.125  # 0.5  # Duration of the augmentation on screen
-    aug_wait = 0.125  # 0.5  # Temporal distance between augmentations
+    aug_wait = 0.250  # 0.5  # Temporal distance between augmentations
     inter_trial_int = 0.125  # 0.5
     inter_seq_interval = 0.5  # 0.5
-    cue_interval = 0.125  # 0.5
+    cue_interval = 1  # 0.5
     # Experimental Sequences and Trials
     seq_number = 5
-    num_trials = 7
+    num_trials = 21
     num_iter = 1000
     # Dynamic Variables
-    aug = 'Flash'
+    aug = 'Invert'
     init = 'Exp'
     info = 'Details'
     window_scaling = 'Full'  # 'Full' or '0.5'.
-    stimulus_scaling = 'Medium'
+    stimulus_scaling = 'Small'
     '===============================================================================RANDOMISATION LISTS'
     print('----Generating non-consecutive randomised augmentation lists... \n')
     aug_list = list_gen(num_emoji, seq_number, num_trials, num_iter)
@@ -167,6 +167,10 @@ if __name__ == '__main__':
         'Zip Sequence.'
         zipr(data_direc, ext='.npy', keyword='volt', full_ext=1, compress=False)
         zipr(data_direc, ext='.npy', keyword='imp', full_ext=1, compress=False)
+    # Prints
+    print('Aug List: ', aug_list.shape, aug_list)
+    print('Aug List Slice: ', aug_list[:, 0, 0])
+    print('Aug_Non_Con: ', estimulus.aug_non_con.shape, estimulus.aug_non_con)
     # Marker Check
     marker_file = './Data/P_3Data/marker_data.npz'
     np.savez(marker_file, tr_sample1, tr_timestamp1, tr_sample2, tr_timestamp2)

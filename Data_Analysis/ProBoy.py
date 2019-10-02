@@ -25,6 +25,457 @@ import matplotlib.pyplot as plt
 'Ctrl + Alt + Shift + [ = Collapse all functions'
 
 
+def slice_ext(data_file, data_type, labels_file, markers_file, num_chan, num_emoji, num_seq, out_size, plotter, verbose):
+    '''
+    Method for extracting emoji level / event data chunks based on the on-set / offset
+    of marker stream pushed label timestamps. This means we extract data only during the
+    times at which the stimuli has begun and ended, yielding more rigourous time-corrective
+    data values. These emoji-level chunks are interpolated to ensure consistency in
+    the temporal separation of data time-points.
+
+    ASSUMES 8 Channels: Fz, Cz, Pz, P4, P3, O1, O2, A2. / [0:7] , important for seq_data parsing.
+
+    # Inputs:
+
+    data_file = the file location containing either the eeg / imp .npz's (Trial-Level).
+    data_type = either 'volt' or 'imp' for voltages or impedances data file extraction and slicing.
+    labels_file = the file location containing the labels files e.g. 0001_trial_labels.npz (Trial-Level).
+    marker_file = the file location containing the marker file (all pushed markers and timestamps) (Session-Level).
+    num_chan = number of channels for extraction.
+    num_emoji = number of emojis in the stimulus array.
+    num_seq = number of sequences in each trial.
+    out_size = size of the channel level signal chunk to want returned from the interpolation function.
+    plotter = plot showing the extraction and resampling of one emoji event across all channels using zeroed
+              data. The data is not zeroed, only the timestamps, data zeroing is done by prepro function,
+              see note below. 1 == plot, 0 == no plot.
+    verbose = details of the function operating, 1 == print progress, 0 == do not print.
+
+    # Outputs:
+
+    starts = marker timestamps for all pushed emoji labels occuring at the START of the event (pre-augmenttion).
+    ends = marker timestamps for all pushed emoji labels occuring at the END of the event (post-augmentation).
+    seq_chk = Extracted data array using marker start and end pushed timestamps, yet to be re-sampled.
+    r_data = Aggregate arrays of the extracted and resampled event data, dims = Samples x Channels x Seqs x Trials
+    r_times_zer = Aggregate arrays of the ZEROED extracted and resampled event timestamps, dims = Samples x Seqs x Trials
+    r_times = 1D array of the extracted non-re-sampled event timestamps for temporal linear session time checking.
+    num_trials = number of trials across entire session.
+
+
+    Example:
+
+    NOTE: the timestamps ARE zeroed, the data is NOT zeroed. The interp function requires the x-axis to be increasing.
+    The timestamps from LSL are output in such large system time numbers it cannot reliably detect the increasing,
+    or some strange rounding is occuring.
+
+    -Ensure non-zeroed time-stamps are stored, reshaped and plotted to ensure there is cross-session temporal consistency.
+    '''
+
+    # Get Trial Data file locations.
+    dat_files = pathway_extract(data_file, '.npz', data_type, full_ext=0)
+    eeg_files = path_subplant(data_file, np.copy(dat_files), 0)
+    if verbose == 1:
+        print('EEG Files DIMS: ', np.shape(eeg_files), 'EEG Files: ', eeg_files)
+    # Experimental Parameters.
+    num_trials = len(eeg_files)
+    # Get Labels file locations.
+    grn_files = pathway_extract(labels_file, '.npz', 'trial', full_ext=0)
+    lab_files = path_subplant(labels_file, np.copy(grn_files), 0)
+    if verbose == 1:
+        print('Lab Files DIMS: ', np.shape(lab_files), 'Lab Files: ', lab_files)
+    # Marker Data.
+    markers = np.load(markers_file)
+    # Marker Timestamps.
+    starts = markers['arr_1']
+    ends = markers['arr_3']
+    # Marker Labels e.g. '6', or '0', or '1', a string of the actual emoji location augmented..
+    mark_start = markers['arr_0']
+    mark_end = markers['arr_2']
+    # Markers reshape by trials and seqs.
+    starts = np.reshape(starts, (num_trials, num_seq, num_emoji))
+    ends = np.reshape(ends, (num_trials, num_seq, num_emoji))
+    # Aggregate arrays.
+    # Samples x Channels x Seq x Trials
+    r_data = np.zeros((out_size, num_chan, num_emoji, num_seq, num_trials))
+    # Samples x Sequences x Trials : Non-Zeroed.
+    r_times = []
+    # Aggregate arrays for zeroed timestamps plotting.
+    r_times_zer = np.zeros((out_size, num_emoji, num_seq, num_trials))
+
+    for t in range(num_trials):
+        # Loading Data.
+        data = np.load(eeg_files[t])
+        # Loading Labels.
+        labels = np.load(lab_files[t])  # .npz containg both labels related files (see below).
+        # Matrix containing the order of augmentations for all emoji locations across the trial.
+        order = labels['arr_0']
+        # Extract Targ Cued for each seqence.
+        targs = labels['arr_1']  # List of target cues across the entire trial.
+        targ_cue = targs[t]  # List of the nth target cue for the nth trial.
+        if verbose == 1:
+            print('EEG File_Name', eeg_files[t])
+            print('Labels: ', labels)
+            print('LABS File_Name', lab_files[t])
+            print('Order', order)
+            print('Targs', targs)
+            print('Targ Cue', targ_cue)
+            print('Marker Start Labels', mark_start)
+            print('Marker End Labels', mark_end)
+
+        for i in range(num_seq):
+            pres_ord = order[i, :]  # List of the nth Sequence's augmentation order from 1 trial.
+            # temporal position of target cue augmented during the trial.
+            f_index = pres_ord[targ_cue]
+            if verbose == 1:
+                print('Pres Ord: ', pres_ord)
+                print('F Index: ', f_index)
+            # EEG Data.
+            sequence = 'arr_{0}'.format(i)  # list key for extraction of 1 sequence worth of data.
+            # Sequence-Level data parsing only relevent electrodes
+            seq_data = data[sequence][:, 0:num_chan]
+            # Sequence-level timestamps from main data array.
+            seq_time = data[sequence][:, -1]
+            if verbose == 1:
+                print('Seq Data DIMS: ', seq_data.shape)
+                print('Seq Time DIMS: ', seq_time.shape)
+            for j in range(num_emoji):
+                # START: Find nearest value of the marker timestamps in the corresponding data timestamp array.
+                v_s = starts[t, i, j]
+                # Index in timestamp array closest to onset of marker indcating the start of the emoji event.
+                str_idx = (np.abs(seq_time - v_s)).argmin()
+                # END: Find nearest value of the marker timestamps in the corresponding data timestamp array.
+                # Pad to ensure all P3 wave form extracted, taking marker start point and adding 0.5s, indexing to that location in the data array.
+                # Just a check to ensure the end marker is not below 0.3s (past peak of the P3 waveform).
+                if ends[t, i, j] < starts[t, i, j] + 0.3:
+                    v_e = starts[t, i, j] + 0.4
+                else:
+                    print('Crash Code: End Marker Positioned Before P3 Propogation.')
+                    v_e = starts[t, i, j] + 0.4
+                # Index in timestamp array closest to onset of marker indcating the end of the emoji event.
+                # print('Seq Time: ', seq_time)
+                # print('V_E: ', v_e)
+                end_idx = (np.abs(seq_time - v_e)).argmin()
+                # Indexing into data array to extract currect P300 chunk.
+                seq_chk = seq_data[str_idx: end_idx, :]
+                # Indexing into timestamp array to extract currect P300 chunk timestamps.
+                print('Str Idx: ', str_idx, 'End Idx: ', end_idx)
+                seq_temp = seq_time[str_idx: end_idx]  # Non-Zeroed Timestamps @ Sequence Level.
+                r_times = np.append(r_times, seq_temp)  # Non-Zeroed Timestamps @ Trial Level.
+                # Zeroed Timestamps @ Sequence Level.
+                seq_temp_zer = seq_temp - seq_temp[0]
+                # Resampling Interpolation Method @ Channel Level, using zeroed timestamp values.
+                r_data[:, :, j, i, t], r_times_zer[:, j, i, t] = interp2D(
+                    seq_chk, seq_temp_zer, output_size=out_size, plotter=0, verbose=0)
+                'Verbose Details of operation.'
+                if verbose == 1:
+                    print('V_s: ', v_s, 'Start IDX: ', str_idx, 'V_e: ', v_e, 'End IDX: ', end_idx)
+                    print('Diff in time between Start and End: ', v_e - v_s)
+                    print('Emoji: {0} | Seq: {1}'.format(j + 1, i + 1),
+                          'Seq_Chk Dims: ', seq_chk.shape)
+                    print('r_data DIMS: ', r_data.shape, 'r_times DIMS: ', r_times.shape)
+                    'Zeroed Data Section for Plotting.'
+    if plotter == 1:
+        plt.plot(r_times_zer[:, 0, 0, 0], r_data[:, 0, 0, 0, 0])
+        plt.title(
+            'Resampled Timestamps (X Axis) and Data (Y Axis) for 1st Channel in 1st Sequence in 1st Trial')
+        plt.show()
+        plt.plot(r_times)
+        plt.title(
+            'Non-Resampled Timestamps to check ascending and consistent session progression in temporal terms.')
+        plt.show()
+    return starts, ends, seq_chk, r_data, r_times_zer, r_times, num_trials
+
+
+def time_check(data_file, markers_file):
+    '''
+    Compares timestapms collected by the eeg / imp and marker streams to ensure maxinmal alignment.
+    Plots the onset and offset of pushed marker stream samples against the timestamp eeg / imp stream values.
+    Also, plots data using data stream timstamp axis vs pre-gen perfect axis to illustrate temporal acquisition inconsistency.
+
+    # Inputs;
+
+    data_file = specific data .npz file for a single trial, assumes 14 channels, 7 actual electrodes.
+
+    makers_file = marker_data.npz containing the pushed marker labels for the entire session period.
+
+    # NO OUTPUTS.
+
+    # Example:
+
+    data_file = '..//Data_Aquisition/Data/P_3Data/voltages_t0001_s1_190917_102243806411.npz'
+    markers_file = '..//Data_Aquisition/Data/P_3Data/marker_data.npz'
+
+    time_check(data_file, markers_file)
+
+    '''
+
+    data = np.load(data_file)
+    markers = np.load(markers_file)
+    # EEG Data.
+    sequence = 'arr_0'
+    seq1_data = data[sequence][:, 0:7]
+    print('Seq Data DIMS: ', seq1_data.shape)
+    # EEG Timestamps.
+    seq1_time = data[sequence][:, -1]
+    print('Seq Time DIMS: ', seq1_time.shape)
+    print('First Data Time Stamp: ', seq1_time[0], ': ', 0)
+    print('Last Data Time Stamp: ', seq1_time[-1], ': ', seq1_time[-1] - seq1_time[0])
+    # Marker Data.
+    seq_mark_end = markers['arr_3']
+    seq_mark_str = markers['arr_1']
+    print('Seq1 Mark DIMS: ', seq_mark_str.shape)
+    print('1st Mark Stamp: ', seq_mark_str[0])
+    # Diff between 1st EEG Timestamp and 1st Marker Timestamp.
+    print('Data Marker Offset: ', seq_mark_str[0] - seq1_time[0])
+
+    for i in range(len(seq_mark_str)):
+        print('Length Mark Collection Emoji {0}: '.format(
+            i + 1), seq_mark_end[i] - seq_mark_str[i], 'Start: ', seq_mark_str[i], 'End: ', seq_mark_end[i])
+
+    'Plots'
+    # Plot EEG Data Timestamps.
+    plt.plot(seq1_time)
+    num_emojis = 7
+    print('1st Sequence Start Times: ', seq_mark_str[0:6])
+    mark1 = np.zeros(len(seq1_time))
+    mark2 = np.zeros(len(seq1_time))
+
+    for i in range(num_emojis):
+        # Plot Marker Start Times.
+        mark1[:] = seq_mark_str[i]
+        print('Start Time: ', seq_mark_str[i])
+        plt.plot(mark1)
+        # Plot Marker End Times.
+        mark2[:] = seq_mark_end[i]
+        print('End Time: ', seq_mark_end[i])
+        plt.plot(mark2)
+    plt.title('Marker Start and End Points Overlaid on EEG OR IMP Data Timestamps.')
+    plt.show()
+
+    # Data with Data Timestamp Axis.
+    plt.plot(seq1_time, seq1_data[:, 0])
+    plt.title('Data with Data Timestamp Axis')
+    plt.show()
+    # Data with Pre-Gen Timestamp Axis.
+    gen_time = np.arange(len(seq1_data[:, 0]))
+    plt.plot(gen_time, seq1_data[:, 0])
+    plt.title('Data with Pre-Gen Timestamp Axis')
+    plt.show()
+
+    # Find nearest value of the marker start timestamps in the corresponding data timestamp array.
+    arr = seq1_time
+    v = seq_mark_str[0]
+    idx = (np.abs(arr - v)).argmin()
+    print('Start Idx: ', idx, 'Idx of Seq Time: ',
+          seq1_time[idx], 'Idx of Seq Data: ', seq1_data[idx, 0])
+    # Find nearest value of the marker end timestamps in the corresponding data timestamp array.
+    arr = seq1_time
+    v = seq_mark_end[6]
+    idx = (np.abs(arr - v)).argmin()
+    print('End Idx: ', idx, 'Idx of Seq Time: ',
+          seq1_time[idx], 'Idx of Seq Data: ', seq1_data[idx, 0])
+
+
+def spatial_labeller(labels_file, num_emoji, num_seq, verbose):
+    '''
+
+    Method of extracting spatial labels from the flash order of emoji augmentations.
+    e.g. Sequence = [3, 5, 1, 6, 0, 2, 4] | Target Cue = 3, meaning that the 4th emoji
+    underwent an augmentation, as from this sequence above you can see that the 4th
+    emoji was augmented 2nd (1).
+
+    Labelling the augmentation events spatially involves describing each emoji in terms
+    of distance from the target emoji which is being attended/ fixated.
+
+    Sequence = [3, 5, 1, 6, 0, 2, 4] , would become [2, 1, 0, 1, 2, 3, 4], with zero indicating
+    the emoji location cued and value labels emanating from this location increasing
+    as a function of distance from this spatial location.
+
+    # Inputs:
+
+    labels_file = Simply specify the file location of the trial labels.
+                  e.g. '..//Data_Aquisition/Data/P_3Data/Labels/'
+    num_emoji =  number of emoji in the stimulus array.
+
+    num_seq = number of sequences in each trial.
+
+    verbose = specify if you want to print details of labelling (1 == Yes, 0 == No).
+
+    # Outputs:
+
+    sp_labels = a 1D label array for all event chunks segmented by SegBoy (around 500ms each).
+
+    # Example:
+
+    sp_labels = pb.spatial_labeller(labels_file, num_emoji, num_seq, verbose=0)
+
+    OR
+
+    sp_labels = spatial_labeller('..//Data_Aquisition/Data/P_3Data/Labels/', 7, 5, 0)
+
+    '''
+
+    grn_files = pathway_extract(labels_file, '.npz', 'trial', full_ext=0)
+    lab_files = path_subplant(labels_file, np.copy(grn_files), 0)
+    if verbose == 1:
+        print('Lab Files DIMS: ', np.shape(lab_files), 'Lab Files: ', lab_files)
+
+    # Experimental Parameters.
+    num_trials = len(lab_files)
+    if verbose == 1:
+        print('Num Trials: ', num_trials)
+
+    # Aggregate PreFrom Array @ Trial Level.
+    sp_labels = []
+
+    for t in range(num_trials):
+        # Loading Labels.
+        labels = np.load(lab_files[t])
+        order = labels['arr_0']
+        # Extract Targ Cued for each seqence.
+        targs = labels['arr_1']
+        targ_cue = targs[t]
+        if verbose == 1:
+            print('Labels: ', labels)
+            print('LABS File_Name', lab_files[t])
+            print('Order', order)
+            print('Targs', targs)
+            print('Targ Cue', targ_cue)
+            # Spatial Labelling.
+            print('------Spatial Labeller')
+        # Experimental Parameters.
+        num_emoji = 7
+        num_seq = 5
+        # Aggregate Preform Array.
+        fin_sp = []
+        for j in range(num_seq):
+            sp_pres = []
+            targ_cue = targs[j]
+            if verbose == 1:
+                print('Targ Cue: ', targ_cue)
+            for i in range(num_emoji):
+                pin = np.array2string(np.abs(i - targ_cue))
+                if i == 0:
+                    sp_pres = pin
+                else:
+                    sp_pres = np.append(sp_pres, pin)
+                if i and j and t == [0, 0, 0]:
+                    sp_labels = pin
+                else:
+                    sp_labels = np.append(sp_labels, pin)
+            sp_pres = np.expand_dims(sp_pres, axis=1)
+            if j == 0:
+                fin_sp = sp_pres
+            else:
+                fin_sp = np.append(fin_sp, sp_pres, axis=1)
+            if verbose == 1:
+                print('Sequence {}: '.format(j + 1), sp_pres.shape, ' \n', sp_pres)
+        if verbose == 1:
+            print('Trial {}: '.format(t + 1), fin_sp.shape, ' \n', fin_sp)
+            # Aggreaate into 1D tp_labels array across the Seesion.
+            print('Spatial Labels 1D Array: ', sp_labels.shape, ' \n', sp_labels)
+    return sp_labels
+
+
+def temporal_labeller(labels_file, num_emoji, num_seq, verbose):
+    '''
+    Method of extracting temporal labels from the flash order of emoji augmentations.
+    e.g. Sequence = [3, 5, 1, 6, 0, 2, 4] | Target Cue = 3, meaning that the 4th emoji
+    underwent an augmentation, as from this sequence above you can see that the 4th
+    emoji was augmented 2nd (1).
+
+    Labelling the augmentation events temporal involves describing each emoji in terms
+    of distance in TIME from the target emoji which is being attended/ fixated.
+
+    Sequence = [3, 5, 1, 6, 0, 2, 4] , would become [+2, +4, 0, +5, -1, +1, +3], with zero
+    indicating the emoji location cued and value labels assigned to other locations
+    differing as a function of temporal distance from this timed event.
+
+    # Inputs:
+
+    labels_file = Simply specify the file location of the trial labels.
+                  e.g. '..//Data_Aquisition/Data/P_3Data/Labels/'
+
+    num_emoji =  number of emoji in the stimulus array.
+
+    num_seq = number of sequences in each trial.
+
+    verbose = specify if you want to print details of labelling (1 == Yes, 0 == No).
+
+    # Outputs:
+
+    tp_labels = a 1D label array for all event chunks segmented by SegBoy (around 500ms each).
+
+    # Example:
+
+    tp_labels = pb.temporal_labeller(labels_file, num_emoji, num_seq, verbose=0)
+
+    OR
+
+    tp_labels = temporal_labeller('..//Data_Aquisition/Data/P_3Data/Labels/', 7, 5, verbose=0)
+
+    '''
+    # Get Labels file locations.
+    labels_file = '..//Data_Aquisition/Data/P_3Data/Labels/'
+    grn_files = pathway_extract(labels_file, '.npz', 'trial', full_ext=0)
+    lab_files = path_subplant(labels_file, np.copy(grn_files), 0)
+    if verbose == 1:
+        print('Lab Files DIMS: ', np.shape(lab_files), 'Lab Files: ', lab_files)
+
+    # Experimental Parameters.
+    num_trials = len(lab_files)
+    if verbose == 1:
+        print('Num Trials: ', num_trials)
+
+    # Aggregate PreFrom Array @ Trial Level.
+    tp_labels = []
+    for t in range(num_trials):
+        # Loading Labels.
+        labels = np.load(lab_files[t])
+        order = labels['arr_0']
+        # Extract Targ Cued for each seqence.
+        targs = labels['arr_1']
+        targ_cue = targs[t]
+        if verbose == 1:
+            print('Labels: ', labels)
+            print('LABS File_Name', lab_files[t])
+            print('Order', order)
+            print('Targs', targs)
+            print('Targ Cue', targ_cue)
+        for j in range(num_seq):
+            tp_pres = []
+            pres_ord = order[j, :]
+            targ_cue = targs[j]
+            f_index = pres_ord[targ_cue]
+            if verbose == 1:
+                print('Pres Order: ', pres_ord)
+                print('Targ Cue: ', targ_cue)
+            for i in range(num_emoji):
+                pin = np.array2string(pres_ord[i] - f_index)
+                # Sequence Level Aggregation.
+                if i == 0:
+                    tp_pres = pin
+                else:
+                    tp_pres = np.append(tp_pres, pin)
+                # Cross Trial Aggregation.
+                if i and j and t == [0, 0, 0]:
+                    tp_labels = pin
+                else:
+                    tp_labels = np.append(tp_labels, pin)
+            tp_pres = np.expand_dims(tp_pres, axis=1)
+            if j == 0:
+                # Aggregate Sequence Labels to Trial Labels.
+                fin_tp = tp_pres
+            else:
+                fin_tp = np.append(fin_tp, tp_pres, axis=1)
+            if verbose == 1:
+                print('Sequence {}: '.format(j + 1), tp_pres.shape, ' \n', tp_pres)
+    if verbose == 1:
+        print('Trial {}: '.format(t + 1), fin_tp.shape, ' \n', fin_tp)
+        # Aggreaate into 1D tp_labels array across the Seesion.
+        print('Temporal `Labels 1D Array: ', tp_labels.shape, ' \n', tp_labels)
+    return tp_labels
+
+
 def interp2D(data, timestamps, output_size, plotter, verbose):
     # Resamples 2D data matrices of Samples x Channels via interpolation to produce uniform output matrices of output size x channels.
 
