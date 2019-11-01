@@ -3,10 +3,8 @@ from pylsl import StreamInlet, resolve_stream
 # Visual imports
 from psychopy import visual, core, clock
 # General imports
-import os
 import glob
 import numpy as np
-from datetime import datetime
 import platform
 if platform.architecture()[1][:7] == 'Windows':
     from win32api import GetSystemMetrics
@@ -208,7 +206,7 @@ class LslStream(object):
         self.streams = resolve_stream(*stream_info_list)
 
         # Create a new inlet to read from the stream
-        self.inlet = StreamInlet(self.streams[0])
+        self.inlet = StreamInlet(self.streams[0], max_buflen=938)
 
         # Get stream information (including custom meta-data) and break it down
         self.metainfo = self.inlet.info()
@@ -258,145 +256,6 @@ class LslStream(object):
         self.inlet.__del__()
 
 
-class LslBuffer(object):
-    '''
-    This class works like a buffer, or an enhanced list to store data temporally.
-    It also stores the data in files when erasing it so you don't lose it but
-    you don't lose RAM either.
-
-    METHODS:
-        __init__: Create the buffer
-        add: Add data from LSL stream (formatted as such)
-        take_old: Obtain the oldest part of data and erase it from the buffer
-        take_new: Obtain the newest part of data and erase it from the buffer
-        flag: Return a bool value indicating if the buffer has a certain size
-        clear: Clear the buffer
-        save: Save certain buffer data to a file
-        zip: Take all the files saved and put them into a single .npz file
-
-
-    ATTRIBUTES:
-        self.items: A list with the data and the timestamps as the last column
-        self.save_names: A list with the names of the files used for saving
-    '''
-
-    def __init__(self):
-        self.items = []
-        self.save_names = []    # A string with the names of the savefiles
-
-    def add(self, new):
-        data = new[0]
-        stamps = new[1]
-        for i in range(len(data)):  # Runs over all the moments (time points)
-            # Timestamps become another column on the list
-            data[i].append(stamps[i])
-
-        self.items.extend(data)
-
-    def take_old(self, ammount, delete=False, **kwargs):
-        ''' Take the oldest data in the buffer. Has an option to remove the
-        taken data from the buffer. '''
-
-        # Save data to file
-        if 'filename' in kwargs:
-            self.save(imax=ammount, filename=kwargs['filename'])
-        else:
-            self.save(imax=ammount)
-
-        # Delete data taken if asked
-        if delete is True:
-            return_ = self.items[:ammount]
-            self.items = self.items[ammount:]
-            return return_
-        else:
-            return self.items[:ammount]
-
-    def take_new(self, ammount, delete=False, **kwargs):
-        ''' Take the newest data in the buffer. Has an option to remove the
-        taken data from the buffer. '''
-
-        # Save data to file
-        if 'filename' in kwargs:
-            self.save(imin=ammount, filename=kwargs['filename'])
-        else:
-            self.save(imin=ammount)
-
-        # Delete data taken if asked
-        if delete is True:
-            return_ = self.items[-ammount:]
-            self.items = self.items[:ammount]
-            return return_
-        else:
-            return self.items[-ammount:]
-
-    def flag(self, size):
-        # True if buffer bigger or equal than given size
-        return len(self.items) >= size
-
-    def clear(self, names=False):
-        self.items = []
-        if names is True:
-            self.save_names = []
-
-    def save(self, **kwargs):
-        '''
-        Save part of the buffer to a .npy file
-
-        Arguments:
-            imin (kwarg): First index of slice (arrays start with index 0)
-            imax (kwarg): Last index of slice (last item will be item imax-1)
-            filename (kwarg): Name of the file. Default is buffered_<date and time>
-            timestamped (kwarg): Whether or not to timestamp a custom filename. Default is True
-        '''
-
-        time_string = datetime.now().strftime('%y%m%d_%H%M%S%f')
-        if 'filename' in kwargs:
-            if 'timestamp' in kwargs and kwargs['timestamp'] is False:
-                file_name = kwargs['filename']
-            else:
-                file_name = kwargs['filename'] + time_string
-        else:
-            file_name = 'buffered_' + time_string
-
-        # Save the name to the list of names
-        direc = './Data/P_3Data/'
-        file_name = direc + file_name
-        self.save_names.append(file_name)
-
-        # Save data to file_name.npy file
-        if 'imin' in kwargs and 'imax' in kwargs:
-            imin = kwargs['imin']
-            imax = kwargs['imax']
-            np.save(file_name, self.items[imin:imax])
-        elif 'imin' in kwargs:
-            imin = kwargs['imin']
-            np.save(file_name, self.items[imin:])
-        elif 'imax' in kwargs:
-            imax = kwargs['imax']
-            np.save(file_name, self.items[:imax])
-        else:
-            np.save(file_name, self.items)
-
-    def zip(self, compress=False):
-        '''
-        Takes all the saved .npy files and turns them into a
-        zipped (and compressed if compress = True) .npz file.
-
-        Arguments:
-            compress: True if want to use compressed version of
-                zipped file.
-        '''
-        arrays = []
-        for name in self.save_names:
-            arrays.append(np.load(name + '.npy'))
-            os.remove(name + '.npy')
-
-        if compress is False:
-            np.savez(self.save_names[0], *arrays)
-        else:
-            np.savez_compressed(self.save_names[0], *arrays)
-
-
 class EmojiStimulus(object):
     ''' This object is created to handle every aspect of the visual representation
     of the emoji speller stimulus. It is created to simplify its use in other scripts
@@ -433,6 +292,7 @@ class EmojiStimulus(object):
         self.iseqi: Inter Sequence Interval duration
         self.num_seq: Number of sequences per trial
         self.sequence_duration: Time duration of each sequence
+        self.emoji_duration: Time duration of one emoji augmentation
         self.aug_shuffle: Shuffled list indicating which emoji is going
             to augment in each sequence.
     '''
@@ -456,7 +316,6 @@ class EmojiStimulus(object):
             window_scaling = 0.5
         # Window dimensions (px).
         window_dims = window_scaling * monitor_dims
-
         '------------Stimuli Parameters Images'
         # Stimulus scaling parameter.
         if 'Large' in kwargs:
@@ -475,6 +334,43 @@ class EmojiStimulus(object):
         if 'Exp' in kwargs:
             self.window = visual.Window(
                 window_dims, monitor='testMonitor', units='deg')
+        # Set path location based on number of Emojis key word.
+        if 'Em_1\\' in kwargs:
+            self.fl_location = '.\SVGs\Em_1\Flh\\*.png'
+            self.in_location = '.\SVGs\Em_1\Inv\\*.png'
+            self.ag_location = '.\SVGs\Em_1\Inv\Inverted\\*.png'
+        elif 'Em_2\\' in kwargs:
+            self.fl_location = '.\SVGs\Em_2\Flh\\*.png'
+            self.in_location = '.\SVGs\Em_2\Inv\\*.png'
+            self.ag_location = '.\SVGs\Em_2\Inv\Inverted\\*.png'
+        elif 'Em_3\\' in kwargs:
+            self.fl_location = '.\SVGs\Em_3\Flh\\*.png'
+            self.in_location = '.\SVGs\Em_3\Inv\\*.png'
+            self.ag_location = '.\SVGs\Em_3\Inv\Inverted\\*.png'
+        elif 'Em_4\\' in kwargs:
+            self.fl_location = '.\SVGs\Em_4\Flh\\*.png'
+            self.in_location = '.\SVGs\Em_4\Inv\\*.png'
+            self.ag_location = '.\SVGs\Em_4\Inv\Inverted\\*.png'
+        elif 'Em_5\\' in kwargs:
+            self.fl_location = '.\SVGs\Em_5\Flh\\*.png'
+            self.in_location = '.\SVGs\Em_5\Inv\\*.png'
+            self.ag_location = '.\SVGs\Em_5\Inv\Inverted\\*.png'
+        elif 'Em_6\\' in kwargs:
+            self.fl_location = '.\SVGs\Em_6\Flh\\*.png'
+            self.in_location = '.\SVGs\Em_6\Inv\\*.png'
+            self.ag_location = '.\SVGs\Em_6\Inv\Inverted\\*.png'
+        elif 'Em_7\\' in kwargs:
+            self.fl_location = '.\SVGs\Em_7\Flh\\*.png'
+            self.in_location = '.\SVGs\Em_7\Inv\\*.png'
+            self.ag_location = '.\SVGs\Em_7\Inv\Inverted\\*.png'
+
+            print('fl_location: ', self.fl_location)
+            print('in_location: ', self.in_location)
+            print('ag_location: ', self.ag_location)
+        elif 'Exp_Stim\\' in kwargs:
+            self.fl_location = 'SVGs\Exp_Stim\Flh\\*.png'
+            self.in_location = 'SVGs\Exp_Stim\Inv\\*.png'
+            self.ag_location = 'SVGs\Exp_Stim\Inv\Inverted\\*.png'
 
         # Stimuli holder
         self.stimuli = Stimuli()
@@ -498,10 +394,9 @@ class EmojiStimulus(object):
                 self.aug_path_list = stim_path_list
 
         if 'Flash' in kwargs:
-            print('STIM TYPE: ___________INVERT___________')
+            print('STIM TYPE: ___________FLASH___________')
             '------------Emoticon Images'
-            location = 'SVGs\Exp_Stim\Flh\\*.png'
-            stim_lister(location, aug=[])
+            stim_lister(self.fl_location, aug=[])
             '------------Cueing Stimuli'
             self.stimuli.add(visual.Circle(win=self.window, units='pix', radius=self.emoji_size / 10,
                                            edges=32, fillColor=[1, 1, 1], lineColor=[-1, -1, -1]), 'circWhite')
@@ -514,15 +409,14 @@ class EmojiStimulus(object):
                 0 - emoji_pos / 2, 0 + emoji_pos / 2, self.num_emoji)
             for i in range(self.num_emoji):
                 self.stimuli.items[i].pos = (self.imXaxis[i], 0)
+            print('SELF ITEMS | FLASH: ', self.stimuli.items)
 
         elif 'Invert' in kwargs:
             print('STIM TYPE: ___________INVERT___________')
             '------------Emoticon Images'
-            location = 'SVGs\Exp_Stim\Inv\\*.png'
-            stim_lister(location, aug=[])
+            stim_lister(self.in_location, aug=[])
             '------------Augment Images'
-            aug_loc = 'SVGs\Exp_Stim\Inv\Inverted\\*.png'
-            stim_lister(aug_loc, aug=1)
+            stim_lister(self.ag_location, aug=1)
             '------------Cueing Stimuli'
             self.stimuli.add(visual.Circle(win=self.window, units='pix', radius=self.emoji_size / 10,
                                            edges=32, fillColor=[1, 1, 1], lineColor=[-1, -1, -1]), 'circWhite')
@@ -534,6 +428,7 @@ class EmojiStimulus(object):
 
             for i in range(len(targ_pos)):
                 self.stimuli.items[i].pos = (self.imXaxis[i], 0)
+            print('SELF ITEMS | INVERT: ', self.stimuli.items)
 
         # Print Important Stimuli Info
         if 'Details' and 'Exp' in kwargs:
@@ -581,12 +476,13 @@ class EmojiStimulus(object):
 
         # Compute the duration of the experiment and get the timing of the events
         self.sequence_duration = ((self.aug_dur + self.aug_wait) * self.num_emoji) + self.iseqi
+        self.emoji_duration = self.aug_dur + self.aug_wait
         # augmentation_times = np.linspace(0, self.sequence_duration, self.num_emoji + 1)[:self.num_emoji]
-
         # Create sequence randomisation array
         self.cue_shuffle()
 
     def shuffle(self):
+        'NO LONGER USED.'
         # Randomisation for augmentations
         aug_shuffle = np.arange(
             self.num_emoji * self.num_seq).reshape(self.num_emoji, self.num_seq)
@@ -597,6 +493,9 @@ class EmojiStimulus(object):
 
     def cue_shuffle(self):
         # Randomisation of the fixation cue shuffle.
+
+        print('CUE SHUFFLE PRINT: ', int(self.num_trials / self.num_emoji))
+
         cue_list = []
         for i in range(int(self.num_trials / self.num_emoji)):
             tracker = np.arange(self.num_emoji)
@@ -605,22 +504,31 @@ class EmojiStimulus(object):
             else:
                 cue_list = np.append(cue_list, tracker)
         cue_list = np.resize(cue_list, (self.num_trials))
+        # Initial Randomization
         np.random.shuffle(cue_list)
+        # No Repeat Randomization checking neighbouring elements aren't identical.
+
+        def rep_con(cue_list):
+            x = 0
+            for j in range(len(cue_list)-1):
+                if cue_list[j] == cue_list[j+1]:
+                    x = 1
+            if x > 0:
+                return False
+            else:
+                return True
+        while rep_con(cue_list) is False:
+            np.random.shuffle(cue_list)
         self.fix_shuffle = cue_list
 
-    def play_emoji_inv(self, e, s, t, marker_outlet, marker_inlet):
+    def play_emoji_inv(self, e, s, t, marker_outlet, marker_inlet, eeg_stream, imp_stream, ammount):
         ''' Draw emoji augmentation from sequence s and emoji e'''
         # Draw fixation
         fix_dis = self.emoji_size / 2
-        if s == 0 and e == 0:
-            # Initialization Period for 1st Sequence 1st Emoji.
+        if t == 0 and s == 0 and e == 0:
+            # Initialization Period for 1st Trial, 1st Sequence, 1st Emoji.
             clock.wait(self.pres_dur)
-            # Position and Draw Cue.
-            self.stimuli.items[-1].pos = (
-                self.imXaxis[self.fix_shuffle[t]], -fix_dis)
-            self.stimuli.draw_one(-1)
-            self.window.flip()
-            clock.wait(self.cue_int)
+        if s == 0 and e == 0:
             # Position and Draw Cue.
             self.stimuli.items[-1].pos = (
                 self.imXaxis[self.fix_shuffle[t]], -fix_dis)
@@ -631,11 +539,19 @@ class EmojiStimulus(object):
             # print('Cue Time')
             self.window.flip()
             clock.wait(self.cue_int)
+        'Data Start : EEG / IMP.'
+        if e == 0:
+            # Ensure you only start collecting at 1st emoji, after cue.
+            eeg, eeg_time = eeg_stream.inlet.pull_chunk(max_samples=np.int(ammount * 1.1))
+            imp, imp_time = imp_stream.inlet.pull_chunk(max_samples=np.int(ammount * 1.1))
+        'Marker Start.'
         # Marker for labelling and time-stamping.
         marker_rand = np.array2string(self.aug_non_con[e, s, t])
         # Push and Pull Marker Denoting Start of Emoji augmentation.
         marker_outlet.push(marker=marker_rand)
         sample1, timestamp1 = marker_inlet.pull(timeout=1)
+        if e == 0:
+            print('Start Marker Time: ', timestamp1)
         # Position and Draw Cue.
         self.stimuli.items[-1].pos = (
             self.imXaxis[self.fix_shuffle[t]], -fix_dis)
@@ -662,24 +578,22 @@ class EmojiStimulus(object):
         self.window.flip()
         # Pause aug_wait time
         clock.wait(self.aug_wait)
+        'Marker End.'
         # Push and Pull Marker Denoting Start of Emoji augmentation.
         marker_outlet.push(marker=marker_rand)
         sample2, timestamp2 = marker_inlet.pull(timeout=1)
+        if e == 6:
+            print('End Marker Time: ', timestamp2)
         return sample1, timestamp1, sample2, timestamp2
 
-    def play_emoji_fl(self, e, s, t, marker_outlet, marker_inlet):
+    def play_emoji_fl(self, e, s, t, marker_outlet, marker_inlet, eeg_stream, imp_stream, ammount):
         ''' Draw emoji augmentation from sequence s and emoji e'''
         # Draw fixation
         fix_dis = self.emoji_size / 2
-        if s == 0 and e == 0:
-            # Initialization Period for 1st Sequence 1st Emoji.
+        if t == 0 and s == 0 and e == 0:
+            # Initialization Period for 1st Trial, 1st Sequence, 1st Emoji.
             clock.wait(self.pres_dur)
-            # Position and Draw Cue.
-            self.stimuli.items[-2].pos = (
-                self.imXaxis[self.fix_shuffle[t]], -fix_dis)
-            self.stimuli.draw_one(-2)
-            self.window.flip()
-            clock.wait(self.cue_int)
+        if s == 0 and e == 0:
             # Position and Draw Cue.
             self.stimuli.items[-2].pos = (
                 self.imXaxis[self.fix_shuffle[t]], -fix_dis)
@@ -689,11 +603,19 @@ class EmojiStimulus(object):
             # Flip Screen, wait as it's the first cue to appear in sequence.
             self.window.flip()
             clock.wait(self.cue_int)
+        'Data Start : EEG / IMP.'
+        if e == 0:
+            # Ensure you only start collecting at 1st emoji, after cue.
+            eeg, eeg_time = eeg_stream.inlet.pull_chunk(max_samples=np.int(ammount * 1.1))
+            imp, imp_time = imp_stream.inlet.pull_chunk(max_samples=np.int(ammount * 1.1))
+        'Marker Start.'
         # Marker for labelling and time-stamping.
         marker_rand = np.array2string(self.aug_non_con[e, s, t])
         # Push and Pull Marker Denoting Start of Emoji augmentation.
         marker_outlet.push(marker=marker_rand)
         sample1, timestamp1 = marker_inlet.pull(timeout=1)
+        if e == 0:
+            print('Start Marker Time: ', timestamp1)
         # Position and Draw Cue.
         self.stimuli.items[-2].pos = (
             self.imXaxis[self.fix_shuffle[t]], -fix_dis)
@@ -720,82 +642,84 @@ class EmojiStimulus(object):
         self.window.flip()
         # Pause aug_wait time
         clock.wait(self.aug_wait)
+        'Marker End.'
         # Push and Pull Marker Denoting Start of Emoji augmentation.
         marker_outlet.push(marker=marker_rand)
         sample2, timestamp2 = marker_inlet.pull(timeout=1)
+        if e == 6:
+            print('End Marker Time: ', timestamp2)
         return sample1, timestamp1, sample2, timestamp2
 
-    def play_seq(self, s, t, aug, marker_outlet, marker_inlet):
-        ''' Play sequence number s as aug_shuffle is ordered '''
+    def play_seq(self, s, t, aug, marker_outlet, marker_inlet, eeg_stream, imp_stream, ammount):
+        ''' Play sequence number s as aug_non_con is ordered '''
+        # Set Marker Label and Marker Timestamp variables.
         seq_sample1 = []
         seq_timestamp1 = []
         seq_sample2 = []
         seq_timestamp2 = []
         if aug == 'Invert':
             for e in range(self.num_emoji):
-                if e == 0 and t == 0 and s == 0:
-                    'Initialize'
-                    marker_outlet.push(marker='Init')
-                    init_mark, init_time = marker_inlet.pull(timeout=1)
-                    print('Init Mark: ', init_mark, 'Init Time: ', init_time)
                 sample1, timestamp1, sample2, timestamp2 = self.play_emoji_inv(
-                    e, s, t, marker_outlet, marker_inlet)
+                    e, s, t, marker_outlet, marker_inlet, eeg_stream, imp_stream, ammount)
                 # Marker Variables.
                 seq_sample1 = np.append(seq_sample1, sample1)
                 seq_timestamp1 = np.append(seq_timestamp1, timestamp1)
                 seq_sample2 = np.append(seq_sample2, sample2)
                 seq_timestamp2 = np.append(seq_timestamp2, timestamp2)
+            'Data End'
+            # Ensure you only finish collecting at 7th emoji, after cue augmentations,
+            # before ITIs and allow for final P300 waveform delay to play through.
+            clock.wait(self.iseqi)
+            eeg, eeg_time = eeg_stream.inlet.pull_chunk(max_samples=ammount)
+            imp, imp_time = imp_stream.inlet.pull_chunk(max_samples=ammount)
+            # EEG vs Marker Time Check.
+            eeg = np.asarray(eeg)
+            eeg_time = np.asarray(eeg_time)
+            print('----EEG Chunk DIMS: ', eeg.shape)
+            print('----EEG Chunk Time DIMS: ', eeg_time.shape)
+            print('----EEG Chunk Time Start: ', eeg_time[0], 'EEG Chunk Time End: ', eeg_time[-1])
+            print('----Diff between EEG Chunk and Start Timestamps: ',
+                  eeg_time[0] - seq_timestamp1[0])
+            # Imp vs Marker Time Check.
+            imp = np.asarray(imp)
+            imp_time = np.asarray(imp_time)
+            print('----IMP Chunk DIMS: ', imp.shape)
+            print('----IMP Chunk Time DIMS: ', imp_time.shape)
+            print('----IMP Chunk Time Start: ', imp_time[0], 'IMP Chunk Time End: ', imp_time[-1])
+            print('----Diff between IMP Chunk and Start Timestamps: ',
+                  imp_time[0] - seq_timestamp1[0])
             clock.wait(self.iseqi)
         if aug == 'Flash':
             for e in range(self.num_emoji):
-                if e == 0 and t == 0 and s == 0:
-                    'Initialize'
-                    marker_outlet.push(marker='Init')
-                    init_mark, init_time = marker_inlet.pull(timeout=1)
-                    print('Init Mark: ', init_mark, 'Init Time: ', init_time)
+                'RUN STIMULUS.'
                 sample1, timestamp1, sample2, timestamp2 = self.play_emoji_fl(
-                    e, s, t, marker_outlet, marker_inlet)
+                    e, s, t, marker_outlet, marker_inlet, eeg_stream, imp_stream, ammount)
                 # Marker Variables.
                 seq_sample1 = np.append(seq_sample1, sample1)
                 seq_timestamp1 = np.append(seq_timestamp1, timestamp1)
                 seq_sample2 = np.append(seq_sample2, sample2)
                 seq_timestamp2 = np.append(seq_timestamp2, timestamp2)
+            'Data End'
+            # Ensure you only finish collecting at 7th emoji, after cue augmentations,
+            # before ITIs and allow for final P300 waveform delay to play through.
             clock.wait(self.iseqi)
-        return seq_sample1, seq_timestamp1, seq_sample2, seq_timestamp2
-
-
-def erp_code():
-    # class ERPDataset(Dataset):
-    #     '''
-    #     Previously used to load and preprocess OPEN source data from Guger 2009, use as
-    #     DataLoader skeleton for input into analysis.
-    #     '''
-    #
-    #     def __init__(self, filepath):
-    #         # Use load method to load data
-    #         self.load(filepath)
-    #
-    #         # Use the process function
-    #         self.preprocess()
-    #
-    #     def __getitem__(self, index):
-    #         ''' Gives an item from the training data '''
-    #         return self.train_data[index]
-    #
-    #     def __len__(self):
-    #         return self.train_data.shape[1] + self.test_data.shape[1]
-    #
-    #     def load(self, filepath):
-    #         # This line is mainly to clean the format using only the filepath
-    #         data = loadmat(filepath)[filepath.split('\\')[-1].split('.')[-2]][0, 0]
-    #
-    #         # Extract the train and test data from the void object
-    #         self.train_data = data['train']
-    #         self.test_data = data['test']
-    #
-    #     def preprocess(self):
-    #         # Use the preprocessing function on both sets of data
-    #         self.train_data = preprocess_erp(self.train_data)
-    #         self.test_data = preprocess_erp(self.test_data)
-    x = []
-    return x
+            eeg, eeg_time = eeg_stream.inlet.pull_chunk(max_samples=ammount)
+            imp, imp_time = imp_stream.inlet.pull_chunk(max_samples=ammount)
+            # Data vs Marker Time Check
+            eeg = np.asarray(eeg)
+            eeg_time = np.asarray(eeg_time)
+            print('----EEG Chunk DIMS: ', eeg.shape)
+            print('----EEG Chunk Time DIMS: ', eeg_time.shape)
+            print('----EEG Chunk Time Start: ', eeg_time[0], 'EEG Chunk Time End: ', eeg_time[-1])
+            print('----Diff between EEG Chunk and Start Timestamps: ',
+                  eeg_time[0] - seq_timestamp1[0])
+            # Imp vs Marker Time Check.
+            imp = np.asarray(imp)
+            imp_time = np.asarray(imp_time)
+            print('----IMP Chunk DIMS: ', imp.shape)
+            print('----IMP Chunk Time DIMS: ', imp_time.shape)
+            print('----IMP Chunk Time Start: ', imp_time[0], 'IMP Chunk Time End: ', imp_time[-1])
+            print('----Diff between IMP Chunk and Start Timestamps: ',
+                  imp_time[0] - seq_timestamp1[0])
+            clock.wait(self.iseqi)
+        return seq_sample1, seq_timestamp1, seq_sample2, seq_timestamp2, eeg, eeg_time, imp, imp_time

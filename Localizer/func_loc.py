@@ -310,9 +310,12 @@ def loc_shuffle(num_emoji, num_trials):
     a = np.ones(np.int(num_trials/2))
     b = np.zeros(np.int(num_trials/2)-1)
     c = np.append(a, b)
+    print('a: ', a, 'b: ', b, 'c: ', c)
     random.seed(a=5)
     np.random.shuffle(c)
     c = np.append(0, c)
+    if ((num_emoji * num_trials) % 2) != 0:
+        c = np.append(c, 0)
     c = c.astype(int)
     return c
 

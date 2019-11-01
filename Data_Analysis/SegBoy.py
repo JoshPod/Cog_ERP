@@ -17,10 +17,15 @@ import matplotlib.pyplot as plt
     4) Save these data to './SegData' as 'eeg_data.npy'
 
 '''
+'-----------Experimental Parameters'
+num_chan = 8  # 8 Chan in order to include A2 ref.
+num_emoji = 4
+num_seq = 5
 
-data_file = '..//Data_Aquisition/Data/P_3Data/'
-labels_file = '..//Data_Aquisition/Data/P_3Data/Labels/'
-markers_file = '..//Data_Aquisition/Data/P_3Data/marker_data.npz'
+data_file = '..//Data_Aquisition/Data/P_3Data/Em_{0}/'.format(num_emoji)
+labels_file = data_file + 'Labels'
+print(labels_file)
+markers_file = data_file + 'marker_data.npz'
 
 # PyTorch (1) or LDABoy (0) Formatting.
 format_sw = 0
@@ -32,13 +37,9 @@ plot_sw = 0
 save_sw = 1
 
 '-----------EEG Data Prep'
-# Experimental Parameters.
-num_chan = 7
-num_emoji = 7
-num_seq = 5
 # Slice Extraction and Interpolation Resampling.
 starts, ends, seq_chk, r_data, r_times_zer, r_times, num_trials = pb.slice_ext(
-    data_file, 'volt', labels_file, markers_file, num_chan, num_emoji, num_seq, out_size=250, plotter=0, verbose=1)
+    data_file, 'volt', labels_file, markers_file, num_chan, num_emoji, num_seq, out_size=250, plotter=0, verbose=0)
 print('EEG R_Data Dims: ', r_data.shape)
 # Plots
 if plot_sw == 1:
@@ -52,19 +53,21 @@ if plot_sw == 1:
 
 # Signal Processing.
 # A2 ref always -7, as there are 6 variables at end: ACC8, ACC9, ACC10, Packet, Trigger & Time-Stamps.
-elec_chans = [0, 1, 2, 3, 4, 5]
-averager = 'ON'
+# 0) Fz, 1) Cz, 2) Pz, 3) P4, 4) P3, 5) O1, 6) O2, 7) A2.'
+elec_chans = [1]  # [0, 1, 2, 3, 4, 5, 6]
+averager = 'OFF'
 if averager == 'OFF':
     num_chans = len(elec_chans)
 elif averager == 'ON':
     num_chans = 1
 
+# Refernce index is -1 as the unnecessary channels have been parsed out by slice_ext
 for t in range(num_trials):
     for s in range(num_seq):
         for e in range(num_emoji):
             plus_dat = pb.prepro(r_data[:, :, e, s, t], samp_ratekHz=0.5, zero='ON', ext='INC-Ref', elec=elec_chans,
-                                 filtH='ON', hlevel=1, filtL='ON', llevel=25,
-                                 notc='LOW', notfq=50, ref_ind=-7, ref='A2', avg=averager)
+                                 filtH='ON', hlevel=1, filtL='ON', llevel=20,
+                                 notc='LOW', notfq=50, ref_ind=-1, ref='A2', avg=averager)
             plus_dat = np.expand_dims(plus_dat, axis=1)
             if t == 0 and s == 0 and e == 0:
                 p_data = plus_dat
@@ -102,7 +105,7 @@ if plot_sw == 1:
     plt.title('Last Imp R_Data Resampled Event.')
     plt.show()
 # Reshaping: Samples x Channels x Singleton x Events (emoji*seqs*trials).
-ir_data = np.reshape(r_data, (250, 7, (num_emoji * num_seq * num_trials)))
+ir_data = np.reshape(r_data, (250, num_chan, (num_emoji * num_seq * num_trials)))
 if format_sw == 1:
     ir_data = np.expand_dims(ir_data, axis=2)
 print('Imp FINAL |  R_Data Post Reshape Dims: ', ir_data.shape)
@@ -110,7 +113,12 @@ print('Imp FINAL |  R_Data Post Reshape Dims: ', ir_data.shape)
 '------------Labels Prep'
 sp_labels = pb.spatial_labeller(labels_file, num_emoji, num_seq, verbose=0)
 tp_labels = pb.temporal_labeller(labels_file, num_emoji, num_seq, verbose=0)
+bn_labels = pb.binary_labeller(np.copy(sp_labels), verbose=1)
+
+print(sp_labels.shape, np.unique(sp_labels))
+print(tp_labels.shape)
+print(bn_labels.shape)
 
 'Save EEG Data, Impedances Data and Labels.'
 if save_sw == 1:
-    np.savez('./SegData/database', pr_data, ir_data, sp_labels, tp_labels)
+    np.savez('./SegData/database', pr_data, ir_data, sp_labels, tp_labels, bn_labels)

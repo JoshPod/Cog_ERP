@@ -12,8 +12,6 @@ from datetime import datetime
 import platform
 if platform.architecture()[1][:7] == 'Windows':
     from win32api import GetSystemMetrics
-# Pytorch imports
-# from torch.utils.data import Dataset
 
 
 class Stimuli(object):
@@ -270,7 +268,7 @@ class LslBuffer(object):
             file_name = 'buffered_' + time_string
 
         # Save the name to the list of names
-        direc = './Data/LocData/'
+        direc = './Data/'
         file_name = direc + file_name
         self.save_names.append(file_name)
 
@@ -400,6 +398,7 @@ class EmojiStimulus(object):
         def stim_lister(location, aug):
             # Get a list with the path to the emoticon image files
             stim_path_list = glob.glob(location)
+            print()
             # Iterate over them to create the stimuli and the labels corresponding to the filename
             for i in range(len(stim_path_list)):
                 # Unpack the path string to get just filename without file format
@@ -420,15 +419,15 @@ class EmojiStimulus(object):
 
         # Pass all the stimuli images and shapes to self.stimuli list for presentation.
         if 'Flash' in kwargs:
-            location = 'SVGs\Loc_Stim\\*.png'
+            location = 'Loc_SVGs\\*.png'
             stim_lister(location, aug=[])
             # White Square Stim Parameters
             self.stimuli.add(visual.Rect(win=self.window, units='pix', width=self.emoji_size * 1.5,
                                          height=self.emoji_size * 1.5, fillColor=[1, 1, 1], lineColor=[0, 0, 0]), 'rectWhite')
         elif 'Invert' in kwargs:
-            location = 'SVGs\Loc_Stim\\*.png'
+            location = 'Loc_SVGs\\*.png'
             stim_lister(location, aug=[])
-            aug_loc = 'SVGs\Loc_Stim\Loc_Aug\\*.png'
+            aug_loc = 'Loc_SVGs\Loc_Aug\\*.png'
             stim_lister(aug_loc, aug=1)
 
         # Print Important Stimuli Info
@@ -549,43 +548,3 @@ class EmojiStimulus(object):
         ''' Play sequence number s as aug_shuffle is ordered '''
         for t in range(self.num_trials):
             self.play_emoji(t)
-
-
-def erp_code():
-    # from scipy.io import loadmat
-    # from functions import preprocess_erp
-    #
-    # class ERPDataset():
-    #     '''
-    #     Previously used to load and preprocess OPEN source data from Guger 2009, use as
-    #     DataLoader skeleton for input into analysis.
-    #     '''
-    #
-    #     def __init__(self, filepath):
-    #         # Use load method to load data
-    #         self.load(filepath)
-    #
-    #         # Use the process function
-    #         self.preprocess()
-    #
-    #     def __getitem__(self, index):
-    #         ''' Gives an item from the training data '''
-    #         return self.train_data[index]
-    #
-    #     def __len__(self):
-    #         return self.train_data.shape[1] + self.test_data.shape[1]
-    #
-    #     def load(self, filepath):
-    #         # This line is mainly to clean the format using only the filepath
-    #         data = loadmat(filepath)[filepath.split('\\')[-1].split('.')[-2]][0, 0]
-    #
-    #         # Extract the train and test data from the void object
-    #         self.train_data = data['train']
-    #         self.test_data = data['test']
-    #
-    #     def preprocess(self):
-    #         # Use the preprocessing function on both sets of data
-    #         self.train_data = preprocess_erp(self.train_data)
-    #         self.test_data = preprocess_erp(self.test_data)
-    x = []
-    return x

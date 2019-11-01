@@ -1,9 +1,94 @@
 # System import
+import os
 import sys
-import time
 import random
 import numpy as np
-from pylsl import resolve_streams, resolve_stream, resolve_byprop, StreamInlet, StreamInfo, StreamOutlet
+from datetime import datetime
+from pylsl import resolve_streams
+
+
+def exp_params(pres_duration, aug_duration, aug_wait, inter_trial_int, inter_seq_interval,
+               cue_interval, seq_number, num_trials, num_iter, aug, init, info,
+               window_scaling, stimulus_scaling, data_direc):
+    '''
+
+    Function to save info on the experimental parameters post session.
+    Inputs are all the parameters previously specified.
+    Outputs a .txt file to Data_Direc.
+
+    Example:
+
+    data_direc = './Data/P_3Data/'
+    exp_params(pres_duration, aug_duration, aug_wait, inter_trial_int, inter_seq_interval,
+                   cue_interval, seq_number, num_trials, num_iter, aug, init, info,
+                   window_scaling, stimulus_scaling, data_direc)
+
+    '''
+
+    key = ('pres_duration: ', 'aug_duration: ', 'aug_wait: ', 'inter_trial_int: ',
+           'inter_seq_interval: ', 'cue_interval: ', 'seq_number: ', 'num_trials: ',
+           'num_iter: ', 'aug: ', 'init: ', 'info: ', 'window_scaling: ', 'stimulus_scaling: ')
+
+    p_vals = [pres_duration, aug_duration, aug_wait, inter_trial_int, inter_seq_interval,
+              cue_interval, seq_number, num_trials, num_iter, aug, init, info,
+              window_scaling, stimulus_scaling]
+
+    text_file = open(data_direc + 'Experimental_Parameters.txt', 'w')
+    for i in range(len(key)):
+        if i == 0:
+            text_file.write('Experimental_Parameters' + '\n')
+            text_file.write(key[i] + str(p_vals[i]) + '\n')
+        else:
+            text_file.write(key[i] + str(p_vals[i]) + '\n')
+    text_file.close()
+
+
+def imp_check(imp, Cz, limit, plotter, verbose):
+    import matplotlib.pyplot as plt
+    '''
+    This function provides basic stats on impedance values colected at the sequence level.
+    Can also kill the entire experiment if impendance ranges across sequence are greater
+    than a pre-specified LIMIT ('limit') variable.
+
+    Inputs:
+
+    imp: array of Samples x Channels containing impedances values over 2 sequence.
+    Cz: index of Cz electrode in imp matrix.
+    limit: kOhm limit on impedances range.
+    plotter: plots a graph for vidualizing Cz electroed impedances values over the trial.
+    verbose: if you want additional info set to 1 e.g. mean, variance, std, CV.
+
+    Note: if limit is overcome, then all impedances info and plts are returned.
+
+    Outputs:
+
+    True if below limit.
+    False and quit if above limit.
+
+    Example:
+
+    imp_check(imp, limit=5, plotter=1, verbose=1)
+
+    '''
+    'Checking Impedances Basic Stats.'
+    # Grab Cz Electrode.
+    x = imp[:, Cz]
+    ranger = np.amax(x)-np.amin(x)
+    print('Impedances Range OK: ', ranger)
+
+    if ranger > limit:
+        print('!!! CRITICAL: Impedances Range Exceeded Limit | Ending Experiemnt !!!')
+        if plotter == 1:
+            plt.show(plt.plot(x))
+        if verbose == 1:
+            print('mean: ', np.mean(x))
+            print('variance: ', np.var(x))
+            print('std: ', np.std(x))
+            print('cv: ', np.std(x) / np.mean(x))
+        quit()
+    # For an approximate answer, please estimate your coefficient of variation (CV=standard deviation / mean).
+    # As a rule of thumb, a CV >= 1 indicates a relatively high variation, while a CV < 1 can be considered low.
+    # A "good" SD depends if you expect your distribution to be centered or spread out around the mean.
 
 
 def name_gen(num_vals):
@@ -42,7 +127,7 @@ def dict_bash_kwargs():
 
     args = []
     for i in range(len(sys.argv) - 1):
-        arg = str(sys.argv[i+1]).split("=")
+        arg = str(sys.argv[i + 1]).split("=")
         args.append(arg)
     return dict(args)
 
@@ -109,14 +194,14 @@ def preprocess_erp(erp_array):
     first_index = 0
     for i in range(erp_array.shape[1]):
         # If there's data in the temp list and it is a different rowcol, store it as a feature vector
-        if i+1 == erp_array.shape[1] or erp_array[9, i] != erp_array[9, i+1]:
+        if i + 1 == erp_array.shape[1] or erp_array[9, i] != erp_array[9, i + 1]:
             # Save features of this chunk to list
-            features.append(erp_array[0:9, first_index:i+1])
+            features.append(erp_array[0:9, first_index:i + 1])
             rowcol.append(erp_array[9, i])
             flags.append(erp_array[10, i])
 
             # First index for next chunk is next index
-            first_index = i+1
+            first_index = i + 1
 
     # Here we standarise the features' vectors to have the same
     # normal lengths, because we can find anomalous vectors.
@@ -137,16 +222,16 @@ def preprocess_erp(erp_array):
         iter_len = features[index].shape[1]
         # Reshape the elements after sequences to have the same shapes as ISI arrays
         if iter_len != std_len_1 and iter_len != std_len_2:
-            if features[index-1].shape[1] == std_len_1:
+            if features[index - 1].shape[1] == std_len_1:
                 features[index] = features[index][:, :std_len_2]
-            elif features[index-1].shape[1] == std_len_2:
+            elif features[index - 1].shape[1] == std_len_2:
                 features[index] = features[index][:, :std_len_1]
         index += 1
 
     # Compacting and making feature vectors for the training and testing
     # Start iterating over all the items in the lists
     iter_ = 0
-    while not iter_+1 >= len(features):
+    while not iter_ + 1 >= len(features):
         # The flatten does the channel concatenation
         features[iter_] = np.append(
             features[iter_], features[iter_ + 1], axis=1).flatten()
@@ -187,7 +272,7 @@ def save_sequence(file_name, aug_shuffle, prediction_list, final_prediction, fix
     # Now for each sequence
     for s in range(len(aug_shuffle)):
         file_object.write("Sequence {0} has random sequence {1}. Predicted {2}. Cue was {3} \n".format(
-            s+1, aug_shuffle[s], prediction_list[s], fix_pos))
+            s + 1, aug_shuffle[s], prediction_list[s], fix_pos))
     # For the whole trial
     file_object.write("Final Prediction was {0}, Cue was {1}, Cue  order was {2}.\n".format(
         final_prediction, fix_pos, fix_order))
@@ -212,7 +297,7 @@ def save_labels(trial_number, direc, file_name, fix_pos, fix_order, num_trials, 
         namer = '00'
     elif num_trials > 99 and num_trials <= 999:
         namer = ''
-    fin_name = direc+namer+file_name
+    fin_name = direc + namer + file_name
     np.savez(fin_name, labels, fix_order)
 
 
@@ -238,14 +323,14 @@ def rand_nums(num_emoji):
 
 def consec_check(arr):
     res = 0
-    for i in range(len(arr)-1):
-        if arr[i] == arr[i+1]+1:
+    for i in range(len(arr) - 1):
+        if arr[i] == arr[i + 1] + 1:
             res = 1
-        if arr[i] == arr[i+1]-1:
+        if arr[i] == arr[i + 1] - 1:
             res = 1
-        if arr[i] == arr[i-1]+1:
+        if arr[i] == arr[i - 1] + 1:
             res = 1
-        if arr[i] == arr[i-1]-1:
+        if arr[i] == arr[i - 1] - 1:
             res = 1
     return res
 
@@ -256,10 +341,10 @@ def consec_seq(this_val, next_val):
     if this_val == next_val:
         res = 1
     # Check if 1 more.
-    if this_val == next_val+1:
+    if this_val == next_val + 1:
         res = 1
     # Check if 1 less.
-    if this_val == next_val-1:
+    if this_val == next_val - 1:
         res = 1
     # print(res)
     return res
@@ -277,12 +362,12 @@ def seq_gen(num_emoji, num_iter):
             # print('Success: ', conseq)
         else:
             x = rand_nums(num_emoji)
-            print('Conseq DIMS: ', np.shape(conseq))
+            # print('Conseq DIMS: ', np.shape(conseq))
             while (consec_check(x) == 1):
-                print('Working...', x)
+                # print('Working...', x)
                 x = rand_nums(num_emoji)
             conseq = np.append(conseq, x, axis=1)
-            print('Success: ', x)
+            # print('Success: ', x)
     # print('Final Seq DIMS: ', np.shape(conseq), 'Final Seqs: \n', conseq)
     return conseq
 
@@ -291,14 +376,14 @@ def list_gen(num_emoji, num_seqs, num_trials, num_iter):
     print('List_Gen Working...')
     conseq = seq_gen(num_emoji, num_iter)
 
-    for i in range(num_trials*num_seqs):
+    for i in range(num_trials * num_seqs):
         if i == 0:
             fin_con = conseq[:, 0]
             fin_con = np.expand_dims(fin_con, axis=1)
             # print('CONSEQ DIMS: ', np.shape(conseq))
             # print('1st FIN_CON DIMS: ', np.shape(fin_con))
         if i != 0:
-            this_val = fin_con[-1, i-1]
+            this_val = fin_con[-1, i - 1]
             # print('This VAL: ', this_val)
 
             rand_val = np.random.randint(num_iter, size=1)
@@ -312,9 +397,9 @@ def list_gen(num_emoji, num_seqs, num_trials, num_iter):
                 next_val = x[0]
                 # print('Working...', 'this val: ', this_val, 'next val: ', next_val)
 
-            print('Success!', 'this val: ', this_val, 'next val: ', next_val)
+            # print('Success!', 'this val: ', this_val, 'next val: ', next_val)
             fin_con = np.append(fin_con, x, axis=1)
-    print('FIN CON DIMS: ', np.shape(fin_con), 'FIN_CON: \n', fin_con)
+    # print('FIN CON DIMS: ', np.shape(fin_con), 'FIN_CON: \n', fin_con)
     fin_con = np.reshape(fin_con, (num_emoji, num_seqs, num_trials), order='F')
     # return fin_con
     return fin_con
@@ -332,10 +417,30 @@ def list_gen(num_emoji, num_seqs, num_trials, num_iter):
     #     print('5th Seq: ', x[:, 4, 1]) '''
 
 
+def generic_pres(num_emoji, num_seqs, num_trials):
+    # Generates a randomised array to control emoji augemtnations, doesn't respect consecutive numbers as it's only to be used for
+    # emoji displays with 4 or less emoji.
+    'Not for use on less than 2 emojis, '
+
+    # Example:
+    # x = generic_pres(6, 5, 10)
+
+    x = np.zeros((num_emoji, num_seqs, num_trials))
+
+    for i in range(num_trials):
+        for j in range(num_seqs):
+            y = np.arange(num_emoji)
+            random.shuffle(y)
+            y = y.astype(int)
+            x[:, j, i] = y
+            x = x.astype(int)
+    return x
+
+
 def stamp_check(data):
     stamps = data[:, -1]
     reference = stamps[0]
-    stamps = (stamps-reference)*1000
+    stamps = (stamps - reference) * 1000
     trial_dur = stamps[-1]
     return(trial_dur)
 
@@ -345,8 +450,8 @@ def loc_shuffle(num_emoji, num_trials):
     # loc_shuffle = np.random.randint(num_emoji+1, size=num_trials)
 
     # Get balanced, shuffled P300 aug_list.
-    a = np.ones(np.int(num_trials/2))
-    b = np.zeros(np.int(num_trials/2))
+    a = np.ones(np.int(num_trials / 2))
+    b = np.zeros(np.int(num_trials / 2))
     c = np.append(a, b)
     np.random.shuffle(c)
     c = c.astype(int)
@@ -367,3 +472,69 @@ def folder_gen(data_filename, labels_filename):
         print('Directory: ', labels_filename, ' Created ')
     else:
         print('Directory: ', labels_filename, ' Exists')
+
+
+def saver(filename, data, times):
+    '''
+    Save part of the buffer to a .npy file
+
+    Arguments:
+        filename: voltage or impedances, appended to time-string timestamp in .npy format.
+        data: the chunk of impedance or eeg data collected.
+        times: chunk of corresponding timestamp data.
+    '''
+
+    time_string = datetime.now().strftime('%y%m%d_%H%M%S%f')
+    filename = filename + time_string + '.npy'
+
+    # Save the name to the list of names
+    direc = './Data/P_3Data/'
+    filename = direc + filename
+
+    # Append Timestamp data to the EEG / IMP data matrix.
+    print('Pre Data DIMS: ', data.shape)
+    times = np.expand_dims(times, axis=1)
+    print('Times DIMS: ', times.shape)
+    data = np.append(data, times, axis=1)
+    print('Post Data DIMS: ', data.shape)
+
+    # Save data to file_name.npy file
+    np.save(filename, data)
+
+
+def zipr(direc, ext, keyword, full_ext, compress=False):
+    '''
+    Takes all the saved .npy files and turns them into a
+    zipped (and compressed if compress = True) .npz file.
+
+    Arguments:
+        direc = get data directory.
+        ext = select your file delimiter.
+        keyword = unique filenaming word/phrase.
+        compress: True if want to use compressed version of
+            zipped file.
+    '''
+    'Example: '
+    # zipr(data_direc, ext='.npy', keyword='volt', full_ext=1, compress=False)
+
+    files = [i for i in os.listdir(direc) if os.path.splitext(i)[1] == ext]
+    _files = []
+    for j in range(len(files)):
+        if files[j].find(keyword) != -1:
+            if full_ext != 1:
+                _files.append(files[j])
+            if full_ext == 1:
+                _files.append(direc + files[j])
+    filename = _files[0][0:12] + '.npz'
+
+    arrays = []
+    for i in range(len(_files)):
+        arrays.append(np.load(_files[i]))
+        os.remove(_files[i])
+
+    filename = _files[0][0:-4] + '.npz'
+
+    if compress is False:
+        np.savez(filename, *arrays)
+    else:
+        np.savez_compressed(filename, *arrays)

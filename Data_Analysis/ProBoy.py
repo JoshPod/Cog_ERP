@@ -25,6 +25,225 @@ import matplotlib.pyplot as plt
 'Ctrl + Alt + Shift + [ = Collapse all functions'
 
 
+def int_labels(y):
+    # Generate and output integer labels.
+    y2 = []
+    for p in range(len(y)):
+        if p == 0:
+            y2 = int(y[p])
+        else:
+            y2 = np.append(y2, int(y[p]))
+    return y2
+
+
+def lda_(data, labels, split, div, num_comp, meth, scaler, covmat, verbose):
+    '''
+    Application of LDA for data discrimation analysis.
+
+    Assumes Trials x Samples.
+
+    Inputs:
+        data = data matrix of EEG.
+        labels = ground truth labels.
+        split = num splits in the Stratified Shuffle Splits for train and test sets.
+        div = division in the split between train and test e.g 0.85 == 85% train weighted.
+        n_components = dimensions of the embedding space.
+        meth = LDA method e.g. 'eigen'
+        scaler = 'min' for min_max scaler, 'standard' for standard scikit learn scaler.
+        covmat = compute and print covariance matrix of results, if 1 perform.
+        verbose = 1 : print out info.
+
+    Output:
+        Plots of the TSNE, this analysis is only for visualization.
+
+    Example:
+
+    pb.lda_(data, labels, split, div, num_comp, meth, scaler, verbose)
+
+    '''
+    from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
+    from sklearn.model_selection import StratifiedShuffleSplit
+
+    '---Parameters---'
+    if split is None:
+        split = 2
+    if div is None:
+        div = 0.85
+    if num_comp is None:
+        num_comp = 2
+    if meth is None:
+        meth = 'eigen'
+
+    '---Data Prep---'
+    # SwapAxes.
+    data = np.swapaxes(data, 0, 1)
+    # Feature Scaling.
+    if scaler == 'min':
+        data = min_max_scaler(data)
+    elif scaler == 'standard':
+        data = stand_scaler(data)
+    # Data splitting for test and train.
+    sss = StratifiedShuffleSplit(n_splits=split, train_size=div, random_state=2)
+    sss.get_n_splits(data, labels)
+    for train_index, test_index in sss.split(data, labels):
+        # print("TRAIN:", train_index, "TEST:", test_index)
+        X_train, X_test = data[train_index], data[test_index]
+        y_train, y_test = labels[train_index], labels[test_index]
+
+    '---LDA---'
+    clf = LinearDiscriminantAnalysis(solver='eigen', shrinkage='auto',
+                                     n_components=num_comp).fit(X_train, y_train)
+    # Plots Visulizing Groups in LDA: X_r fitted comparison plots.
+    X_r2 = clf.fit(X_train, y_train).transform(X_train)
+    # Performance.
+    if meth == 'eigen':
+        print('Explained Covariance Ratio of Components \n: ', clf.explained_variance_ratio_)
+    print('Classes: ', clf.classes_)
+    predictions = clf.predict(X_test)
+    pred_proba = clf.predict_proba(X_test)
+    score = clf.score(X_test, y_test)
+    if verbose == 1:
+        print('X_r2 DIMS: ', X_r2.shape)
+        print('Size of Test Sample: ', len(y_test))
+        print('Actual Labels: ', y_test)
+        print('Predictions:   ', predictions)
+        print('Predict Probabilities: \n', np.round(pred_proba, decimals=2))
+        print('Score: ', score)
+    if covmat == 1:
+        num_classes = len(np.unique(y_test))
+        num_samps = len(predictions)
+        cov_mat = np.zeros((num_classes, num_classes))
+        count = 0
+        for i in range(num_classes):
+            for j in range(num_classes):
+                # if y_test[count] == predictions[count]:
+                cov_mat[y_test[count], predictions[count]
+                        ] = cov_mat[y_test[count], predictions[count]] + 1
+                count = count + 1
+        print(cov_mat)
+
+
+def tSNE_2D(X, labels, n_components, perplexities, learning_rates, scaler):
+    '''
+    Application of 2D TSNE for visualization of high dimensional data.
+
+    Assumes Trials x Samples.
+
+    Inputs:
+        X = data matrix of EEG.
+        labels = ground truth labels.
+        n_components = dimensions of the embedding space.
+        perplexities = akin to complexity of the data and following computations.
+        learning_rates = degree at which computations will attempt to converge.
+        scaler = 'min' for min_max scaler, 'standard' for standard scikit learn scaler.
+
+    Output:
+        Plots of the TSNE, this analysis is only for visualization.
+
+    Example:
+
+    pb.tSNE_2D(aug_data, labels, n_components=None, perplexities=None, learning_rates=None, scaler='min')
+
+    '''
+    from matplotlib.ticker import NullFormatter
+    from sklearn import manifold
+    from time import time
+
+    '---Parameters---'
+    if n_components is None:
+        n_components = 2  # Typically between 5-50.
+    if perplexities is None:
+        perplexities = [15, 30, 45, 60]  # Typically around 30.
+    if learning_rates is None:
+        learning_rates = [5, 10, 500, 1000]  # Typically between 10 - 10000
+    '---Subplot Prep---'
+    (fig, subplots) = plt.subplots(len(learning_rates), len(perplexities) + 1, figsize=(15, 8))
+    '---Data Prep---'
+    # Feature Scaling.
+    if scaler == 'min':
+        X = min_max_scaler(X)
+    elif scaler == 'standard':
+        X = stand_scaler(X)
+    # Swap Axes.
+    X = np.swapaxes(X, 0, 1)
+    print('FINAL EEG DIMS: ', X.shape)
+    '---Label Mapping | RED == P3 | GREEN == NP3---'
+    red = labels == 0
+    green = labels == 1
+    '---Plotting P3 vs NP3---'
+    ax = subplots[0][0]
+    ax.scatter(X[red, 0], X[red, 1], c="r")
+    ax.scatter(X[green, 0], X[green, 1], c="g")
+    ax.xaxis.set_major_formatter(NullFormatter())
+    ax.yaxis.set_major_formatter(NullFormatter())
+    '---TSNE---'
+    for j, learning_rate in enumerate(learning_rates):
+        for i, perplexity in enumerate(perplexities):
+            print('LOC DATA: Perplexity={0} | Learning Rate={1}'.format(
+                perplexity, learning_rate))
+            ax = subplots[j][i + 1]
+            t0 = time()
+            tsne = manifold.TSNE(n_components=n_components, init='random',
+                                 random_state=0, perplexity=perplexity, learning_rate=learning_rate,
+                                 n_iter=10000, n_iter_without_progress=300, verbose=1)
+            Y = tsne.fit_transform(X)
+            t1 = time()
+            print('-------Duration: {0} sec'.format(np.round(t1 - t0), decimals=2))
+            ax.set_title('Perplexity={0} | \n Learning Rate={1}'.format(perplexity, learning_rate))
+            'Plotting'
+            ax.scatter(Y[red, 0], Y[red, 1], c="r")
+            ax.scatter(Y[green, 0], Y[green, 1], c="g")
+            ax.xaxis.set_major_formatter(NullFormatter())
+            ax.yaxis.set_major_formatter(NullFormatter())
+            ax.axis('tight')
+    plt.tight_layout()
+    plt.show()
+
+
+def stand_scaler(X):
+    '''
+    Standard Scaler from SciKit Learn package.
+
+    Assumes Trials x Samples.
+
+    Input: Data Matrix.
+
+    Output: Standardized Data Matrix.
+
+    Example:
+
+    stand_X = pb.stand_scaler(X)
+
+    '''
+    from sklearn.preprocessing import StandardScaler
+    # https://stackabuse.com/implementing-lda-in-python-with-scikit-learn/
+    sc = StandardScaler()
+    X = sc.fit_transform(X)
+    return X
+
+
+def min_max_scaler(X):
+    '''
+    Min Max Scaler from SciKit Learn package.
+
+    Assumes Trials x Samples.
+
+    Imput: Data Matrix.
+
+    Output: Standardized Data Matrix.
+
+    Example:
+
+    mms_X = pb.min_max_scaler(X)
+
+    '''
+    from sklearn.preprocessing import MinMaxScaler
+    # https://stackabuse.com/implementing-lda-in-python-with-scikit-learn/
+    mss = MinMaxScaler()
+    X = mss.fit_transform(X)
+    return X
+
+
 def slice_ext(data_file, data_type, labels_file, markers_file, num_chan, num_emoji, num_seq, out_size, plotter, verbose):
     '''
     Method for extracting emoji level / event data chunks based on the on-set / offset
@@ -134,6 +353,8 @@ def slice_ext(data_file, data_type, labels_file, markers_file, num_chan, num_emo
             seq_data = data[sequence][:, 0:num_chan]
             # Sequence-level timestamps from main data array.
             seq_time = data[sequence][:, -1]
+            # print('seq_time: ', seq_time)
+            # plt.show(plt.plot(seq_time))
             if verbose == 1:
                 print('Seq Data DIMS: ', seq_data.shape)
                 print('Seq Time DIMS: ', seq_time.shape)
@@ -146,18 +367,20 @@ def slice_ext(data_file, data_type, labels_file, markers_file, num_chan, num_emo
                 # Pad to ensure all P3 wave form extracted, taking marker start point and adding 0.5s, indexing to that location in the data array.
                 # Just a check to ensure the end marker is not below 0.3s (past peak of the P3 waveform).
                 if ends[t, i, j] < starts[t, i, j] + 0.3:
-                    v_e = starts[t, i, j] + 0.4
+                    v_e = starts[t, i, j] + 0.5
                 else:
                     print('Crash Code: End Marker Positioned Before P3 Propogation.')
-                    v_e = starts[t, i, j] + 0.4
+                    v_e = starts[t, i, j] + 0.5
                 # Index in timestamp array closest to onset of marker indcating the end of the emoji event.
                 # print('Seq Time: ', seq_time)
-                # print('V_E: ', v_e)
+                print('V_s: ', v_s, 'V_E: ', v_e)
                 end_idx = (np.abs(seq_time - v_e)).argmin()
+                print('str_idx : ', str_idx, 'end_idx: ', end_idx)
                 # Indexing into data array to extract currect P300 chunk.
                 seq_chk = seq_data[str_idx: end_idx, :]
                 # Indexing into timestamp array to extract currect P300 chunk timestamps.
-                print('Str Idx: ', str_idx, 'End Idx: ', end_idx)
+                if verbose == 1:
+                    print('Str Idx: ', str_idx, 'End Idx: ', end_idx)
                 seq_temp = seq_time[str_idx: end_idx]  # Non-Zeroed Timestamps @ Sequence Level.
                 r_times = np.append(r_times, seq_temp)  # Non-Zeroed Timestamps @ Trial Level.
                 # Zeroed Timestamps @ Sequence Level.
@@ -275,6 +498,26 @@ def time_check(data_file, markers_file):
           seq1_time[idx], 'Idx of Seq Data: ', seq1_data[idx, 0])
 
 
+def binary_labeller(labels, verbose):
+    '''
+    Option for binary labelling of te data as either containing P3 ('0') or containing NP3 ('1').
+
+    Assumes 1D array of integers computed via the spatial labeller output as specified in the script.
+
+    Verbose: if 1 prints some examples from the ouput, if 0, no printing.
+
+    '''
+    y = labels
+    for i in range(len(y)):
+        if int(y[i]) != 0:
+            y[i] = '0'
+        elif int(y[i]) == 0:
+            y[i] = '1'
+    if verbose == 1:
+        print('Base Normalized Y Labels: ', y[0:10])
+    return y
+
+
 def spatial_labeller(labels_file, num_emoji, num_seq, verbose):
     '''
 
@@ -342,9 +585,6 @@ def spatial_labeller(labels_file, num_emoji, num_seq, verbose):
             print('Targ Cue', targ_cue)
             # Spatial Labelling.
             print('------Spatial Labeller')
-        # Experimental Parameters.
-        num_emoji = 7
-        num_seq = 5
         # Aggregate Preform Array.
         fin_sp = []
         for j in range(num_seq):
@@ -415,7 +655,7 @@ def temporal_labeller(labels_file, num_emoji, num_seq, verbose):
 
     '''
     # Get Labels file locations.
-    labels_file = '..//Data_Aquisition/Data/P_3Data/Labels/'
+    labels_file = labels_file
     grn_files = pathway_extract(labels_file, '.npz', 'trial', full_ext=0)
     lab_files = path_subplant(labels_file, np.copy(grn_files), 0)
     if verbose == 1:
@@ -524,20 +764,20 @@ def sess_plot(data, label, ses_tag, num_trl_per_sess):
     time = np.arange(0, 500, 2)
     u, p3_ind = np.unique(ses_tag, return_index=True)
     num_trials = data.shape[0]
-    p3_ind = np.append(p3_ind, [p3_ind[-1]+num_trl_per_sess])
-    np3_ind = p3_ind+np.int(num_trials/2)
+    p3_ind = np.append(p3_ind, [p3_ind[-1] + num_trl_per_sess])
+    np3_ind = p3_ind + np.int(num_trials / 2)
     print('UNQ: ', u.shape, u)
     print('P3 Index: ', p3_ind.shape, p3_ind)
     print('NP3 Index: ', np3_ind.shape, np3_ind)
     for i in range(len(u)):
-        plt_p3 = np.average(np.squeeze(data[p3_ind[i]:p3_ind[i+1], :, :]), axis=0)
-        plt_np3 = np.average(np.squeeze(data[np3_ind[i]:np3_ind[i+1], :, :]), axis=0)
+        plt_p3 = np.average(np.squeeze(data[p3_ind[i]:p3_ind[i + 1], :, :]), axis=0)
+        plt_np3 = np.average(np.squeeze(data[np3_ind[i]:np3_ind[i + 1], :, :]), axis=0)
         print('Session {0} | P3 mV Range: {1} / NP3 mV Range: {2}'.format(i +
                                                                           1, ranger(plt_p3), ranger(plt_np3)))
         # Plot Legends.
         p3_p, = plt.plot(time, plt_p3, label='P3')
         np3_p, = plt.plot(time, plt_np3, label='NP3')
-        plt.title('Session: {} Signal Averages '.format(i+1))
+        plt.title('Session: {} Signal Averages '.format(i + 1))
         plt.legend([p3_p, np3_p], ['P3', 'NP3'])
         plt.show()
     return u, p3_ind, np3_ind
@@ -656,14 +896,6 @@ def prepro(eeg, samp_ratekHz, zero, ext, elec, ref_ind, ref, filtH, hlevel, filt
     'Reference: Guger (2012): Dry vs Wet Electrodes | https://www.ncbi.nlm.nih.gov/pmc/articles/PMC3345570/'
     # Ensure reference electrode A2 is extracted by calculating the position in the array.
     # A2 ref_ind always -7, as there are 6 variables at end: ACC8, ACC9, ACC10, Packet, Trigger & Time-Stamps.
-    'Plot Options'
-    # num_chans = np.shape(eeg)[1]
-    # num_samps = np.shape(eeg)[0]
-    # ref_ind = num_chans + ref
-    # t_axis = np.arange(num_samps)
-    # plt.plot(t_axis, eeg[:, 7])
-    # plt.show()
-    # print('A2 REFERENCE ELECTRODE INDEX: ', ref)
     if ext == 'INC-Ref':
         all_eeg = eeg[:, [0, 1, 2, 3, 4, 5, 6]]
         grab = np.append(elec, ref_ind)
@@ -3872,6 +4104,7 @@ def sub_band_chunk_plot(data, divs, pow_disp, plotter):
                 plt.bar(x_ax, rel_pow)
         if plotter == 'ON':
             plt.show()
+            plt.title('Sub-Band Plots')
         # Useful Info
         # print('EEG CHK AVG VALS: ', eeg_chk.shape, eeg_chk[0:10])
         # print('EEG CHK POW VALS: ', values)

@@ -14,7 +14,6 @@ from classes_loc import LslStream, LslBuffer, EmojiStimulus
 sys.path.insert(0, 'C:\P300_Project\Data_Analysis')
 import ProBoy as pb
 
-
 '''
     Main Experiment.
 
@@ -26,7 +25,6 @@ import ProBoy as pb
         + Kill with Ctrl+Q
 
 '''
-
 
 # Main #
 if __name__ == '__main__':
@@ -46,17 +44,17 @@ if __name__ == '__main__':
 
     # STIMULUS INITIALISATION #
     print('-- STIMULUS SETUP -- ')
-    emoji_list = glob.glob('SVGs\Loc_Stim\\*.png')
+    emoji_list = glob.glob('Loc_SVGs\Loc_Stim\\*.png')
     num_emoji = np.int(len(emoji_list))
-    num_trials = 200
-    pres_duration = 5
+    num_trials = 20
+    pres_duration = 2  # 5
     aug_duration = 0.125
-    inter_trial_int = 3
+    inter_trial_int = 1  # 3
     # Invert = Use Inversion Stimuli | Flash = Use Rectangle Stimuli.
     aug = 'Flash'
     init = 'Exp'
     info = 'Details'
-    window_scaling = 'Full'
+    window_scaling = 'Full'  # 0.5
     stimulus_scaling = 'Small'
 
     'Aug List'
@@ -74,9 +72,9 @@ if __name__ == '__main__':
     print('Ammount of samples per sequence: {0}'.format(ammount))
 
     'Create Data and Labels Directories.'
-    folder_gen('./Data/LocData/', './Data/LocData/Labels')
-    data_direc = './Data/LocData/'
-    lab_direc = './Data/LocData/Labels/'
+    folder_gen('./Data/', './Data/Labels')
+    data_direc = './Data/'
+    lab_direc = './Data/Labels/'
 
     'BUFFER INITIALIZATION'
     'DATA BUFFER: Samples holding.'
@@ -170,9 +168,3 @@ if __name__ == '__main__':
 
     # Close everything
     estimulus.quit()
-
-'Zipping: VOID.'
-# 'Data Saving: .npz'
-# # Zip the EEG data files
-# buffer.zip()
-# imp_buffer.zip()
