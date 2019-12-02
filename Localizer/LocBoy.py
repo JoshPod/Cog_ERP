@@ -3,12 +3,12 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.signal import savgol_filter
 # Data Analysis Imports
-sys.path.insert(0, '../../Data_Analysis')
+sys.path.insert(0, '../../Data_Analysis/')
 import ProBoy as pb
 
 'Data Loading, Cleaning and Plotting of Localization Experiment Data'
 # Data Pathway Extraction.
-dat_direc = './Data/BackUps/J4/'
+dat_direc = './Data/BackUps/0003_L1/L2/'
 lab_direc = dat_direc + 'Labels/'
 dat_files = pb.pathway_extract(dat_direc, '.npy', 'Volt', full_ext=1)
 imp_files = pb.pathway_extract(dat_direc, '.npy', 'Impedances', full_ext=1)
@@ -83,7 +83,7 @@ p3_elec = []
 np3_elec = []
 eeg_band = []
 eeg_sub = []
-for i in range(len(dat_files)):
+for i in range(len(dat_files)):  # len(dat_files)
     'Pre-Process Data Chunk'
     eeg = np.load(dat_files[i])
     # For Sub-Band Analysis Breakdown.
@@ -103,31 +103,31 @@ for i in range(len(dat_files)):
                          filtH='ON', hlevel=1, filtL='ON', llevel=10,
                          notc='LOW', notfq=50, ref_ind=-7, ref='A2', avg='OFF')
     # For Cz / Target electrode breakdown.
-    eeg = pb.prepro(eeg, samp_ratekHz=0.5, zero='ON', ext='INC-Ref', elec=[1, 2],
-                    filtH='ON', hlevel=1, filtL='ON', llevel=10,
+    eeg = pb.prepro(eeg, samp_ratekHz=0.5, zero='ON', ext='INC-Ref', elec=[1],
+                    filtH='ON', hlevel=1, filtL='ON', llevel=15,
                     notc='LOW', notfq=50, ref_ind=-7, ref='A2', avg='ON')
     # NP300 Trials.
     if labels[i] == 0:
         if np3 == []:
-            np3 = eeg
+            np3 = np.copy(eeg)
             np3 = np.expand_dims(np3, axis=2)
             np3_elec = eeg_elec
             np3_elec = np.expand_dims(np3_elec, axis=2)
         else:
             eeg = np.expand_dims(eeg, axis=2)
-            np3 = np.append(np3, eeg, axis=2)
+            np3 = np.append(np3, np.copy(eeg), axis=2)
             eeg_elec = np.expand_dims(eeg_elec, axis=2)
             np3_elec = np.append(np3_elec, eeg_elec, axis=2)
     # P300 Trials.
     if labels[i] == 1:
         if p3 == []:
-            p3 = eeg
+            p3 = np.copy(eeg)
             p3 = np.expand_dims(p3, axis=2)
             p3_elec = eeg_elec
             p3_elec = np.expand_dims(p3_elec, axis=2)
         else:
             eeg = np.expand_dims(eeg, axis=2)
-            p3 = np.append(p3, eeg, axis=2)
+            p3 = np.append(p3, np.copy(eeg), axis=2)
             eeg_elec = np.expand_dims(eeg_elec, axis=2)
             p3_elec = np.append(p3_elec, eeg_elec, axis=2)
 
@@ -144,17 +144,22 @@ if ldaR == 1:
     '---Data Prep---'
     aug_data = np.append(p3, np3, axis=2)
     aug_data = np.squeeze(aug_data)
-    aug_data = aug_data[0:150, :]
+    aug_data = aug_data[0:200, :]
     print('aug_data dims: ', aug_data.shape)
     '---Labels Prep---'
+    'Labels need to be re-written as '
     num_trials = np.int(np.shape(aug_data)[1] / 2)
-    p3_lab = np.zeros(num_trials)
-    np3_lab = np.ones(num_trials)
+    p3_lab = np.ones(num_trials)
+    np3_lab = np.zeros(num_trials)
+    print('Labels 1: ', labels)
     labels = np.append(p3_lab, np3_lab)
     labels = labels.astype(int)
+    print('Labels 2: ', labels)
     print('labels dims: ', labels.shape)
-    pb.lda_(aug_data, labels, split=None, div=None,
-            num_comp=None, meth='eigen', scaler='min', verbose=1)
+    '---LDA ANALYSIS---'
+    print('aug_data dims: ', aug_data.shape)
+    pb.lda_(aug_data, labels, split=None, div=0.75,
+            num_comp=None, meth='eigen', scaler='min', covmat=1, verbose=1)
 
 '----------Plots----------'
 plotter = 0
@@ -222,7 +227,7 @@ if plotter == 1:
     # This is called the relative band power. | Ref : https://raphaelvallat.com/bandpower.html'
     values, rel_pow = pb.band_power_plots(eeg_sub_avg, sing_plt='ON', plotter='REL')
     pb.sub_band_chunk_plot(eeg_sub, divs=5, pow_disp='REL', plotter='ON')
-    '----Downsampled Data Plots ----'
+    '----AVERAGE Plots ----'
     plt.plot(t_x, p3_avg)
     plt.title('P300 vs NP300')
     plt.plot(t_x, np3_avg)

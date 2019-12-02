@@ -3,7 +3,6 @@ import matplotlib.pyplot as plt
 # Data Analysis Imports
 import sys
 sys.path.insert(0, '../../Data_Analysis')
-sys.path.insert(0, '../../Data_Analysis/tsne')
 import ProBoy as pb
 
 # Load Data.
@@ -24,22 +23,19 @@ for i in range(num_trials - 1):
     # Generate Noise Signal
     # https://stackoverflow.com/questions/14058340/adding-noise-to-a-signal-in-python
     a = 0          # a is the mean of the normal distribution you are choosing from
-    b = 5         # b is the standard deviation of the normal distribution
+    b = 10         # b is the standard deviation of the normal distribution
     c = len(p3)    # c is the number of elements you get in array noise
     noise = np.random.normal(a, b, c)
     noise = np.expand_dims(noise, axis=1)
-    print('noise: ', noise.shape)
     # Add Noise to P3 and NP3 templates.
     no_p = np.add(np.copy(p3), np.copy(noise))
     no_n = np.add(np.copy(np3), np.copy(noise))
-    print('no_p: ', no_p.shape, 'no_n: ', no_n.shape)
     # Append Noise Augmented P3 and NP3 arrays.
     if i == 0:
         noise_p3 = no_p
         noise_np3 = no_n
     noise_p3 = np.append(noise_p3, no_p, axis=1)
     noise_np3 = np.append(noise_np3, no_n, axis=1)
-    print('noise_p3: ', noise_p3.shape, 'noise_np3: ', noise_np3.shape)
     # Plot OG vs noised signals.
     plotter = 0
     if plotter == 1:
@@ -65,10 +61,15 @@ labels = np.append(p_lab, n_lab)
 labels = labels.astype(int)
 print('labels: ', labels.shape, labels[0:5], labels[-5:-1])
 # Save Aug Data.
-# desc = join(desc, )
 noise_info = '| standard deviation of noise: {0}'.format(b)
 desc = np.append(desc, noise_info)
 np.savez('./Data/BackUps/RandData/rand_data.npz', aug_data, labels, desc)
+
+'-----DOWNSAMPLING-----'
+# Downsample Signal.
+down_samp = 0
+if down_samp == 1:
+    pb.down_S(aug_data, factor=25, plotter=1, verbose=1)
 
 '---2D TSNE Analysis---'
 tsneR = 1
@@ -76,9 +77,31 @@ if tsneR == 1:
     pb.tSNE_2D(aug_data, labels, n_components=None,
                perplexities=None, learning_rates=None, scaler='min')
 
+'---3D TSNE Analysis---'
+plot_3D = 0
+if plot_3D == 1:
+    data_3D = np.swapaxes(aug_data, 0, 1)
+    print('data_3D dims: ', data_3D.shape)
+    pb.tSNE_3D(data_3D, labels, n_components=3, init='pca',
+               perplexity=10, learning_rate=10, scaler='min', multi=2, verbose=1)
+
 '---LDA Analysis---'
-ldaR = 1
+ldaR = 0
 if ldaR == 1:
     pb.lda_(aug_data, labels, split=None, div=None,
-            num_comp=None, meth='eigen', scaler='min', verbose=1)
+            num_comp=None, meth='eigen', scaler='min', covmat=None, verbose=1)
     print('LDA NOISE LEVEL: ', b)
+
+'---LOGREG Analysis---'
+log_regR = 1
+if log_regR == 1:
+    pb.log_reg(aug_data, labels, n_splits=2, train_size=0.9, random_state=2,
+               solver='lbfgs', multi_chan='OFF', penalty='l2', max_iter=1000,
+               cross_val_acc=1, covmat=1, verbose=1)
+
+'---DATA PARSING---'
+data_sss = 0
+if data_sss == 1:
+    X_train, y_train, X_test, y_test = pb.data_parsing(aug_data, labels, n_splits=2,
+                                                       train_size=0.9, random_state=2,
+                                                       multi_chan='OFF')

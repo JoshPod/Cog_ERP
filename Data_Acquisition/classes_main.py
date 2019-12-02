@@ -316,7 +316,6 @@ class EmojiStimulus(object):
             window_scaling = 0.5
         # Window dimensions (px).
         window_dims = window_scaling * monitor_dims
-
         '------------Stimuli Parameters Images'
         # Stimulus scaling parameter.
         if 'Large' in kwargs:
@@ -335,6 +334,43 @@ class EmojiStimulus(object):
         if 'Exp' in kwargs:
             self.window = visual.Window(
                 window_dims, monitor='testMonitor', units='deg')
+        # Set path location based on number of Emojis key word.
+        if 'Em_1\\' in kwargs:
+            self.fl_location = '.\SVGs\Em_1\Flh\\*.png'
+            self.in_location = '.\SVGs\Em_1\Inv\\*.png'
+            self.ag_location = '.\SVGs\Em_1\Inv\Inverted\\*.png'
+        elif 'Em_2\\' in kwargs:
+            self.fl_location = '.\SVGs\Em_2\Flh\\*.png'
+            self.in_location = '.\SVGs\Em_2\Inv\\*.png'
+            self.ag_location = '.\SVGs\Em_2\Inv\Inverted\\*.png'
+        elif 'Em_3\\' in kwargs:
+            self.fl_location = '.\SVGs\Em_3\Flh\\*.png'
+            self.in_location = '.\SVGs\Em_3\Inv\\*.png'
+            self.ag_location = '.\SVGs\Em_3\Inv\Inverted\\*.png'
+        elif 'Em_4\\' in kwargs:
+            self.fl_location = '.\SVGs\Em_4\Flh\\*.png'
+            self.in_location = '.\SVGs\Em_4\Inv\\*.png'
+            self.ag_location = '.\SVGs\Em_4\Inv\Inverted\\*.png'
+        elif 'Em_5\\' in kwargs:
+            self.fl_location = '.\SVGs\Em_5\Flh\\*.png'
+            self.in_location = '.\SVGs\Em_5\Inv\\*.png'
+            self.ag_location = '.\SVGs\Em_5\Inv\Inverted\\*.png'
+        elif 'Em_6\\' in kwargs:
+            self.fl_location = '.\SVGs\Em_6\Flh\\*.png'
+            self.in_location = '.\SVGs\Em_6\Inv\\*.png'
+            self.ag_location = '.\SVGs\Em_6\Inv\Inverted\\*.png'
+        elif 'Em_7\\' in kwargs:
+            self.fl_location = '.\SVGs\Em_7\Flh\\*.png'
+            self.in_location = '.\SVGs\Em_7\Inv\\*.png'
+            self.ag_location = '.\SVGs\Em_7\Inv\Inverted\\*.png'
+
+            print('fl_location: ', self.fl_location)
+            print('in_location: ', self.in_location)
+            print('ag_location: ', self.ag_location)
+        elif 'Exp_Stim\\' in kwargs:
+            self.fl_location = 'SVGs\Exp_Stim\Flh\\*.png'
+            self.in_location = 'SVGs\Exp_Stim\Inv\\*.png'
+            self.ag_location = 'SVGs\Exp_Stim\Inv\Inverted\\*.png'
 
         # Stimuli holder
         self.stimuli = Stimuli()
@@ -360,8 +396,7 @@ class EmojiStimulus(object):
         if 'Flash' in kwargs:
             print('STIM TYPE: ___________FLASH___________')
             '------------Emoticon Images'
-            location = 'SVGs\Exp_Stim\Flh\\*.png'
-            stim_lister(location, aug=[])
+            stim_lister(self.fl_location, aug=[])
             '------------Cueing Stimuli'
             self.stimuli.add(visual.Circle(win=self.window, units='pix', radius=self.emoji_size / 10,
                                            edges=32, fillColor=[1, 1, 1], lineColor=[-1, -1, -1]), 'circWhite')
@@ -374,15 +409,14 @@ class EmojiStimulus(object):
                 0 - emoji_pos / 2, 0 + emoji_pos / 2, self.num_emoji)
             for i in range(self.num_emoji):
                 self.stimuli.items[i].pos = (self.imXaxis[i], 0)
+            print('SELF ITEMS | FLASH: ', self.stimuli.items)
 
         elif 'Invert' in kwargs:
             print('STIM TYPE: ___________INVERT___________')
             '------------Emoticon Images'
-            location = 'SVGs\Exp_Stim\Inv\\*.png'
-            stim_lister(location, aug=[])
+            stim_lister(self.in_location, aug=[])
             '------------Augment Images'
-            aug_loc = 'SVGs\Exp_Stim\Inv\Inverted\\*.png'
-            stim_lister(aug_loc, aug=1)
+            stim_lister(self.ag_location, aug=1)
             '------------Cueing Stimuli'
             self.stimuli.add(visual.Circle(win=self.window, units='pix', radius=self.emoji_size / 10,
                                            edges=32, fillColor=[1, 1, 1], lineColor=[-1, -1, -1]), 'circWhite')
@@ -394,6 +428,7 @@ class EmojiStimulus(object):
 
             for i in range(len(targ_pos)):
                 self.stimuli.items[i].pos = (self.imXaxis[i], 0)
+            print('SELF ITEMS | INVERT: ', self.stimuli.items)
 
         # Print Important Stimuli Info
         if 'Details' and 'Exp' in kwargs:
@@ -443,11 +478,11 @@ class EmojiStimulus(object):
         self.sequence_duration = ((self.aug_dur + self.aug_wait) * self.num_emoji) + self.iseqi
         self.emoji_duration = self.aug_dur + self.aug_wait
         # augmentation_times = np.linspace(0, self.sequence_duration, self.num_emoji + 1)[:self.num_emoji]
-
         # Create sequence randomisation array
         self.cue_shuffle()
 
     def shuffle(self):
+        'NO LONGER USED.'
         # Randomisation for augmentations
         aug_shuffle = np.arange(
             self.num_emoji * self.num_seq).reshape(self.num_emoji, self.num_seq)
@@ -458,6 +493,9 @@ class EmojiStimulus(object):
 
     def cue_shuffle(self):
         # Randomisation of the fixation cue shuffle.
+
+        print('CUE SHUFFLE PRINT: ', int(self.num_trials / self.num_emoji))
+
         cue_list = []
         for i in range(int(self.num_trials / self.num_emoji)):
             tracker = np.arange(self.num_emoji)
@@ -466,7 +504,21 @@ class EmojiStimulus(object):
             else:
                 cue_list = np.append(cue_list, tracker)
         cue_list = np.resize(cue_list, (self.num_trials))
+        # Initial Randomization
         np.random.shuffle(cue_list)
+        # No Repeat Randomization checking neighbouring elements aren't identical.
+
+        def rep_con(cue_list):
+            x = 0
+            for j in range(len(cue_list)-1):
+                if cue_list[j] == cue_list[j+1]:
+                    x = 1
+            if x > 0:
+                return False
+            else:
+                return True
+        while rep_con(cue_list) is False:
+            np.random.shuffle(cue_list)
         self.fix_shuffle = cue_list
 
     def play_emoji_inv(self, e, s, t, marker_outlet, marker_inlet, eeg_stream, imp_stream, ammount):
@@ -599,7 +651,7 @@ class EmojiStimulus(object):
         return sample1, timestamp1, sample2, timestamp2
 
     def play_seq(self, s, t, aug, marker_outlet, marker_inlet, eeg_stream, imp_stream, ammount):
-        ''' Play sequence number s as aug_shuffle is ordered '''
+        ''' Play sequence number s as aug_non_con is ordered '''
         # Set Marker Label and Marker Timestamp variables.
         seq_sample1 = []
         seq_timestamp1 = []
@@ -671,40 +723,3 @@ class EmojiStimulus(object):
                   imp_time[0] - seq_timestamp1[0])
             clock.wait(self.iseqi)
         return seq_sample1, seq_timestamp1, seq_sample2, seq_timestamp2, eeg, eeg_time, imp, imp_time
-
-
-def erp_code():
-    # class ERPDataset(Dataset):
-    #     '''
-    #     Previously used to load and preprocess OPEN source data from Guger 2009, use as
-    #     DataLoader skeleton for input into analysis.
-    #     '''
-    #
-    #     def __init__(self, filepath):
-    #         # Use load method to load data
-    #         self.load(filepath)
-    #
-    #         # Use the process function
-    #         self.preprocess()
-    #
-    #     def __getitem__(self, index):
-    #         ''' Gives an item from the training data '''
-    #         return self.train_data[index]
-    #
-    #     def __len__(self):
-    #         return self.train_data.shape[1] + self.test_data.shape[1]
-    #
-    #     def load(self, filepath):
-    #         # This line is mainly to clean the format using only the filepath
-    #         data = loadmat(filepath)[filepath.split('\\')[-1].split('.')[-2]][0, 0]
-    #
-    #         # Extract the train and test data from the void object
-    #         self.train_data = data['train']
-    #         self.test_data = data['test']
-    #
-    #     def preprocess(self):
-    #         # Use the preprocessing function on both sets of data
-    #         self.train_data = preprocess_erp(self.train_data)
-    #         self.test_data = preprocess_erp(self.test_data)
-    x = []
-    return x

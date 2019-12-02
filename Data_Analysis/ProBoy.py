@@ -19,11 +19,197 @@ import matplotlib.pyplot as plt
 # from sklearn.preprocessing import StandardScaler
 # from sklearn.linear_model import LogisticRegression
 # from pyriemann.estimation import Covariances, ERPCovariances, XdawnCovariances
-# from sklearn.model_selection import train_test_split, ShuffleSplit  # cross_val_predict,
 
 # Shortcuts
 'Ctrl + Alt + Shift + [ = Collapse all functions'
 
+
+def class_balance(X, y, balance, verbose):
+    '''
+
+    Generates a class balance of P3 and Non-P3 evets based on the Binary 'arr_4' class labels
+    provided by SegBoy.py.
+
+    1) grabs all indices of the P3 and NP3 events from the string labels array and stores separately.
+    2) shuffles the NP3 label indices array to ensure sampling across entire session.
+    3) cuts down NP3 label indices array to same size as that of the P3 labels indices array for
+        a clean 50/50 split to maintain class blance in analysis model fits and testing.
+    4) aggregates P3 and non-P3 data according to these indices into separate data arrays.
+    5) brings all P3 and non-P3 data and labels together for Striatified Shuffling or randomized
+        subsampling further down the analysis pipeline.
+
+    Inputs:
+
+    data = aggregated segmented EEG data across session.
+    labels = MUST BE BINARY ground truth string labels indicating eeg event P3 / NP3.
+    balance = refers to a percentage difference in terms of P3 vs NP3 events in final aggregate array.
+                For example, a value of 1 means 1:1 ratio, a value of 2 means a 1:2 / P3:NP3 ratio.
+                This has a hard-limit as there are only so many P3s to NP3, recommend max of 5.
+    verbose = info on process 1 == print.
+
+    Outputs:
+
+    bal_data = aggregated class-balanced data matrix.
+    bal_labels = aggregated class-balanced string labels array.
+    bal_i_labels = aggregated class-balanced numeric labels array.
+
+    Example:
+
+    bal_i_labels, bal_data, bal_labels = pb.class_balance_50_50(X, y)
+
+    '''
+    import random
+    # Preform P3 and NP3 agregate arrays.
+    p3 = []
+    np3 = []
+    # Balance P3 and NP3 sample sizes.
+    id_p3 = np.where(y == '0')[0][:]
+    if verbose == 1:
+        print('ID_P3 / NUMBER OF P3 EVENTS: ', len(id_p3))
+    id_np3 = np.where(y == '1')[0][:]
+    if verbose == 1:
+        print('ID_NP3 / NUMBER OF NP3 EVENTS PRE SHUFFLE: ', len(id_np3))
+    random.shuffle(id_np3)
+    # Balance Value.
+    bal_val = np.int(len(id_p3)*balance)
+    id_np3 = id_np3[0:bal_val]
+    if verbose == 1:
+        print(id_p3[0], len(id_p3), id_p3[0:10])
+        print(id_np3[0], len(id_np3), id_np3[0:10])
+        print('ID_NP3 / NUMBER OF NP3 EVENTS POST SHUFFLE: ', len(id_np3))
+    # Aggregate P3 signals together.
+    for i in range(len(id_p3)):
+        p_eeg = np.expand_dims(X[id_p3[i], :], axis=1)
+        if i == 0:
+            p3 = p_eeg
+        else:
+            p3 = np.append(p3, p_eeg, axis=1)
+    # Aggregate NP3 signals together to a ratio relative to the P3 class events.
+    for i in range(bal_val):
+        np_eeg = np.expand_dims(X[id_np3[i], :], axis=1)
+        if i == 0:
+            np3 = np_eeg
+        else:
+            np3 = np.append(np3, np_eeg, axis=1)
+    bal_data = np.append(p3, np3, axis=1)
+    bal_labels = np.append(y[id_p3], y[id_np3])
+    bal_i_labels = int_labels(np.copy(bal_labels))
+    if verbose == 1:
+        print('P3:NP3 ratio: {0} : {1} / {2} : {3}'.format(1, balance, len(id_p3), len(id_np3)))
+        print('Bal Data DIMS: ', bal_data.shape)
+        print('Bal String Labels DIMS: ', bal_labels.shape)
+        print('Bal Numeric Labels DIMS: ', bal_i_labels.shape)
+    return bal_data, bal_labels, bal_i_labels
+
+
+def class_balance_50_50(X, y, verbose):
+    '''
+
+    Generates a class balance of P3 and Non-P3 evets based on the Binary 'arr_4' class labels
+    provided by SegBoy.py.
+
+    1) grabs all indices of the P3 and NP3 events from the string labels array and stores separately.
+    2) shuffles the NP3 label indices array to ensure sampling across entire session.
+    3) cuts down NP3 label indices array to same size as that of the P3 labels indices array for
+        a clean 50/50 split to maintain class blance in analysis model fits and testing.
+    4) aggregates P3 and non-P3 data according to these indices into separate data arrays.
+    5) brings all P3 and non-P3 data and labels together for Striatified Shuffling or randomized
+        subsampling further down the analysis pipeline.
+
+    Inputs:
+
+    data = aggregated segmented EEG data across session.
+    labels = MUST BE BINARY ground truth string labels indicating eeg event P3 / NP3.
+    verbose = info on process 1 == print.
+
+    Outputs:
+
+    bal_data = aggregated class-balanced data matrix.
+    bal_labels = aggregated class-balanced string labels array.
+    bal_i_labels = aggregated class-balanced numeric labels array.
+
+    Example:
+
+    bal_i_labels, bal_data, bal_labels = pb.class_balance_50_50(X, y)
+
+    '''
+    import random
+    # Preform p3 and np3 agregate arrays.
+    p3 = []
+    np3 = []
+    # Balance P3 and NP3 sample sizes.
+    id_p3 = np.where(y == '0')[0][:]
+    print('ID_P3 / NUMBER OF P3 EVENTS: ', len(id_p3))
+    id_np3 = np.where(y == '1')[0][:]
+    print('ID_NP3 / NUMBER OF NP3 EVENTS PRE SHUFFLE: ', len(id_np3))
+    random.shuffle(id_np3)
+    id_np3 = id_np3[0:len(id_p3)]
+    print(id_p3[0], len(id_p3), id_p3[0:10])
+    print(id_np3[0], len(id_np3), id_np3[0:10])
+    print('ID_NP3 / NUMBER OF NP3 EVENTS POST SHUFFLE: ', len(id_np3))
+    # Aggregate p3 and np3 signals together.
+    for i in range(len(id_p3)):
+        p_eeg = np.expand_dims(X[id_p3[i], :], axis=1)
+        np_eeg = np.expand_dims(X[id_np3[i], :], axis=1)
+        if i == 0:
+            p3 = p_eeg
+            np3 = np_eeg
+        else:
+            p3 = np.append(p3, p_eeg, axis=1)
+            np3 = np.append(np3, np_eeg, axis=1)
+    bal_data = np.append(p3, np3, axis=1)
+    bal_labels = np.append(y[id_p3], y[id_np3])
+    bal_i_labels = int_labels(np.copy(bal_labels))
+    if verbose == 1:
+        print('Bal Data DIMS: ', bal_data.shape)
+        print('Bal String Labels DIMS: ', bal_labels.shape)
+        print('Bal Numeric Labels DIMS: ', bal_i_labels.shape)
+    return bal_data, bal_labels, bal_i_labels
+
+
+def down_S(data, factor, plotter, verbose):
+    '''
+    Downsamples a signal by a given factor.
+
+    Assumes Trials x Samples.
+
+    Inputs:
+        data = eeg input array.
+        factor = degree to which data is downsampled by, i.e. factor = 2 would half the signal lenth.
+        plotter = plot (1) for graph of pre and post downsampled signal.
+        verbose = 1 : print out info.
+
+    Output:
+        Downsampled signal.
+
+    Example:
+
+    pb.lda_(data, labels, split, div, num_comp, meth, scaler, verbose)
+
+    '''
+    from scipy import signal
+    # Degree by which the signal will be downsampled..
+    down_factor = 2
+    # CRITICAL: Assumes Trials x Samples.
+    num_trials = np.shape(data)[0]
+    num_samps = np.shape(data)[1]
+    # Output size of the downsampled array.
+    down_factor = np.int(num_samps / factor)
+    print('Factor Value: ', down_factor)
+    re_X = np.zeros((num_trials, down_factor))
+    # Utilizing the resample fuction to squash the signal.
+    for i in range(num_trials):
+        re_X[i, :] = signal.resample(data[i, :], down_factor)
+    if verbose == 1:
+        print('OG Data DIMS: ', data.shape, '|  Resampled Data DIMS: ', re_X.shape)
+    # Downsampling plots confirmation.
+    if plotter == 1:
+        plt.subplot(211)
+        plt.plot(data[0, :])
+        plt.subplot(212)
+        plt.plot(re_X[0, :])
+        plt.show()
+    return re_X
 
 def int_labels(y):
     # Generate and output integer labels.
@@ -35,6 +221,134 @@ def int_labels(y):
             y2 = np.append(y2, int(y[p]))
     return y2
 
+def data_parsing(data, labels, n_splits, train_size, random_state, multi_chan, verbose):
+    '''
+    Data splitting for test and train data and labels.
+
+    Can be done for single chan (post channel averaging / or isolated Cz signals),
+    or at the multi channel level (however not randomsied).
+
+    Assumes Trials x Samples.
+
+    Inputs:
+        data = eeg input array.
+        labels = ground truth.
+        splits = number of chunks for train / test evaluation, good for checking start vs end of seesion.
+        train_per = e.g. 0.85 would give 85% of the data to the train set.
+        rand_state = if randmisation engaged (is as default) in sss, then changes random seed.
+        multi_chan = 0 : signle chan, 1 : multi-chan splitting.
+        verbose = 1 : print out info.
+
+    Output:
+        X_train, y_train, X_test, y_test
+
+    Example:
+
+    X_train, y_train, X_test, y_test = pb.data_parsing(data, labels, splits, train_per,
+                                                       rand_state, multi_chan)
+    '''
+    from sklearn.model_selection import StratifiedShuffleSplit
+
+    # Generate split object with sss.
+    sss = StratifiedShuffleSplit(n_splits=n_splits, train_size=train_size, random_state=random_state)
+    sss.get_n_splits(data, labels)
+    print('SSS Split: ', sss)
+
+    data = np.swapaxes(data, 0, 1)
+    print('data dims: ', data.shape, 'labels dims: ', labels.shape)
+
+    '----Multi-Chan Train/ Test Parsing------'
+    if multi_chan == 'OFF':
+        for train_index, test_index in sss.split(data, labels):
+            X_train, X_test = data[train_index], data[test_index]
+            y_train, y_test = labels[train_index], labels[test_index]
+    elif multi_chan == 'ON':
+        ind = np.int(len(labels)*train_per)
+        X_train = data[:, 0:ind]
+        X_test = data[:, ind:]
+        y_train = labels[0: ind]
+        y_test = labels[ind:]
+    if verbose == 1:
+        print('X train: ', X_train.shape, 'X_test: ', X_test.shape,
+          'y train: ', y_train.shape, 'y_test: ', y_test.shape)
+    return X_train, y_train, X_test, y_test
+
+
+def log_reg(data, labels, scaler, n_splits, train_size, random_state, multi_chan,
+            solver, penalty, max_iter, cross_val_acc, covmat, verbose):
+    '''
+    Application of Logistic Regression.
+
+    Assumes Trials x Samples.
+
+    Inherently uses data_parsing SSS Split technique / function.
+
+    Inputs:
+        data = eeg input array.
+        labels = ground truth.
+        scaler = 'min' or 'standard' scaler, or None for pre analysis or split scaling.
+        splits = number of chunks for train / test evaluation, good for checking start vs end of seesion.
+        train_size = e.g. 0.85 would give 85% of the data to the train set.
+        random_state = if randmisation engaged (is as default) in sss, then changes random seed.
+        solver = method of regression.
+        multi_chan = 0 : signle chan, 1 : multi-chan splitting.
+        penalty = loss function penalty e.g 'l1' or 'l2', only available for some solvers.
+        max_iter = number of iterations the log reg takes before converging.
+        cross_val_acc = if you want to check performance using cross val (1).
+        covmat = compute and print confusion matrix of results, if 1 perform.
+        verbose = 1 : print out info.
+
+    Output:
+        Performance results.
+
+    Example:
+    pb.log_reg(data, labels, n_splits=2, train_size=0.85, random_state=2,
+               solver='lbfgs', penalty='l2', cross_val_acc=1, verbose=1)
+    '''
+    from sklearn.linear_model import LogisticRegression
+    from sklearn.model_selection import cross_val_score, StratifiedShuffleSplit
+
+    # 'Data Prep'
+    # Feature Scaling.
+    if scaler == 'min':
+        data = min_max_scaler(data)
+    elif scaler == 'standard':
+        data = stand_scaler(data)
+    # Generate train / test split data.
+    X_train, y_train, X_test, y_test = data_parsing(data, labels, n_splits=n_splits,
+                                                    train_size=train_size, random_state=random_state,
+                                                    multi_chan=multi_chan, verbose=1)
+    print('X train: ', X_train.shape, 'X_test: ', X_test.shape,
+          'y train: ', y_train.shape, 'y_test: ', y_test.shape)
+
+    # Logistic Regression.
+    clf = LogisticRegression(random_state=random_state, solver=solver,
+                             penalty=penalty, max_iter=1000).fit(X_train, y_train)
+    predictions = clf.predict(X_test)
+    pred_proba = clf.predict_proba(X_test)
+    score = clf.score(X_test, y_test)
+    if verbose == 1:
+        print('Actual Labels: ', y_test)
+        print('Predictions:   ', predictions)
+        print('Predict Probabilities: \n', pred_proba)
+        print('---Standard Testing Score: ', score)
+    if covmat == 1:
+        from sklearn.metrics import confusion_matrix
+        cov_mat = confusion_matrix(y_test, predictions)
+        print(cov_mat)
+    '---------------------------------------------------------------------------------------'
+    cross_val_acc = 1
+    if cross_val_acc == 1:
+        # Accuracy via cross val.
+        cr_data = np.swapaxes(data, 0, 1)
+        clf = LogisticRegression(random_state=random_state, solver=solver,
+                                 penalty=penalty, max_iter=1000).fit(cr_data, labels)
+        cv = StratifiedShuffleSplit(n_splits=n_splits, train_size=train_size, random_state=random_state)
+        accuracy = cross_val_score(clf, cr_data, labels, cv=cv)
+        if verbose == 1:
+            print('Accuracy', accuracy)
+            print('---Cross Val Mean Accuracy: ', np.mean(accuracy) * 100, '%')
+            print('Standard Deviation', "%f" % np.std(accuracy))
 
 def lda_(data, labels, split, div, num_comp, meth, scaler, covmat, verbose):
     '''
@@ -50,7 +364,7 @@ def lda_(data, labels, split, div, num_comp, meth, scaler, covmat, verbose):
         n_components = dimensions of the embedding space.
         meth = LDA method e.g. 'eigen'
         scaler = 'min' for min_max scaler, 'standard' for standard scikit learn scaler.
-        covmat = compute and print covariance matrix of results, if 1 perform.
+        covmat = compute and print confusion matrix of results, if 1 perform.
         verbose = 1 : print out info.
 
     Output:
@@ -110,17 +424,79 @@ def lda_(data, labels, split, div, num_comp, meth, scaler, covmat, verbose):
         print('Predict Probabilities: \n', np.round(pred_proba, decimals=2))
         print('Score: ', score)
     if covmat == 1:
-        num_classes = len(np.unique(y_test))
-        num_samps = len(predictions)
-        cov_mat = np.zeros((num_classes, num_classes))
-        count = 0
-        for i in range(num_classes):
-            for j in range(num_classes):
-                # if y_test[count] == predictions[count]:
-                cov_mat[y_test[count], predictions[count]
-                        ] = cov_mat[y_test[count], predictions[count]] + 1
-                count = count + 1
+        from sklearn.metrics import confusion_matrix
+        cov_mat = confusion_matrix(y_test, predictions)
         print(cov_mat)
+
+
+def tSNE_3D(data, labels, n_components, init, perplexity, learning_rate, scaler, multi, verbose):
+    '''
+    Application of 3D TSNE for visualization of high dimensional data, however setting n_components at 2
+    prints a 2D projection on a 3D graphic.
+
+    Reference: https://stackoverflow.com/questions/51386902/t-sne-map-into-2d-or-3d-plot
+
+    Assumes Trials x Samples.
+
+    Inputs:
+        data = data matrix of EEG.
+        labels = ground truth (NUMERIC).
+        n_components = dimensions of the embedding space.
+        init = possible options are ‘random’, ‘pca’, and a numpy array of shape (n_samples, n_components)
+        perplexity = akin to complexity of the data and following computations.
+        learning_rate = degree at which the operation attempts to converge.
+        scaler = 'min' for min_max scaler, 'standard' for standard scikit learn scaler.
+        multi = if set at an integer value this is used to control the number of channels used to compute the tSNE.
+        verbose = if 1 prints out info on the tSNE applied.
+
+    Output:
+        Plots of the TSNE, this analysis is only for visualization.
+
+    Example:
+
+    pb.tSNE_2D(aug_data, labels, n_components=None, perplexities=None, learning_rates=None, scaler='min')
+
+    '''
+    from sklearn.manifold import TSNE
+    from mpl_toolkits.mplot3d import Axes3D
+    import matplotlib.pyplot as plt
+
+    '---Parameters---'
+    if n_components is None:
+        n_components = 3  # Typically between 5-50.
+    if init is None:
+        init = 'pca'
+    if perplexity is None:
+        perplexity = 30  # Typically around 30.
+    '---Plot Prep---'
+    fig = plt.figure()
+    ax = fig.add_subplot(111, projection='3d')
+    '---Data Prep---'
+    # Feature Scaling.
+    if scaler == 'min':
+        data = min_max_scaler(data)
+    elif scaler == 'standard':
+        data = stand_scaler(data)
+
+    tsne = TSNE(n_components=n_components, init=init,
+                perplexity=perplexity, learning_rate=learning_rate,
+                n_iter=10000, n_iter_without_progress=300,
+                verbose=verbose).fit_transform(data)
+
+    if multi is None:
+        ax.scatter(*zip(*tsne), c=data[:, 0], cmap='RdBu')
+    elif multi == 1:
+        for i in range(multi):
+            ax.scatter(*zip(*tsne), c=data[:, i], cmap='RdBu')
+    elif multi == 2:
+        '---Label Mapping | RED == P3 | GREEN == NP3---'
+        red = labels == 0
+        green = labels == 1
+        print('tsne red: ', tsne[red, :])
+        print('data comp: ', data[:, 0].shape)
+        ax.scatter(*zip(*tsne[red, :])) # c=np.arange(500, 500) # data[0:np.int(len(data)/2), :])
+        ax.scatter(*zip(*tsne[green, :])) # , c=np.arange(500, 500) # c=data[np.int(len(data)/2):-1, :])
+    plt.show()
 
 
 def tSNE_2D(X, labels, n_components, perplexities, learning_rates, scaler):
@@ -510,9 +886,9 @@ def binary_labeller(labels, verbose):
     y = labels
     for i in range(len(y)):
         if int(y[i]) != 0:
-            y[i] = '0'
-        elif int(y[i]) == 0:
             y[i] = '1'
+        elif int(y[i]) == 0:
+            y[i] = '0'
     if verbose == 1:
         print('Base Normalized Y Labels: ', y[0:10])
     return y

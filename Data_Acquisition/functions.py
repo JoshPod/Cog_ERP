@@ -7,6 +7,141 @@ from datetime import datetime
 from pylsl import resolve_streams
 
 
+def exp_params(pres_duration, aug_duration, aug_wait, inter_trial_int, inter_seq_interval,
+               cue_interval, seq_number, num_trials, num_iter, aug, init, info,
+               window_scaling, stimulus_scaling, data_direc):
+    '''
+
+    Function to save info on the experimental parameters post session.
+    Inputs are all the parameters previously specified.
+    Outputs a .txt file to Data_Direc.
+
+    Example:
+
+    data_direc = './Data/P_3Data/'
+    exp_params(pres_duration, aug_duration, aug_wait, inter_trial_int, inter_seq_interval,
+                   cue_interval, seq_number, num_trials, num_iter, aug, init, info,
+                   window_scaling, stimulus_scaling, data_direc)
+
+    '''
+
+    key = ('pres_duration: ', 'aug_duration: ', 'aug_wait: ', 'inter_trial_int: ',
+           'inter_seq_interval: ', 'cue_interval: ', 'seq_number: ', 'num_trials: ',
+           'num_iter: ', 'aug: ', 'init: ', 'info: ', 'window_scaling: ', 'stimulus_scaling: ')
+
+    p_vals = [pres_duration, aug_duration, aug_wait, inter_trial_int, inter_seq_interval,
+              cue_interval, seq_number, num_trials, num_iter, aug, init, info,
+              window_scaling, stimulus_scaling]
+
+    text_file = open(data_direc + 'Experimental_Parameters.txt', 'w')
+    for i in range(len(key)):
+        if i == 0:
+            text_file.write('Experimental_Parameters' + '\n')
+            text_file.write(key[i] + str(p_vals[i]) + '\n')
+        else:
+            text_file.write(key[i] + str(p_vals[i]) + '\n')
+    text_file.close()
+
+
+def zero_mean(data):
+    'Zeros Data, accepts orientation Samples x Channels.'
+    a, b = np.shape(data)
+    # Preform zero array.
+    zero_data = np.zeros((a, b))
+    for i in range(b):
+        zero_data[:, i] = data[:, i] - np.mean(data[:, i])
+    return zero_data
+
+
+def imp_check_pauser(imp_limit):
+    from pylsl import StreamInlet, resolve_stream
+    # first resolve an EEG stream on the lab network
+    print('Searching for Impedances Stream...')
+    streams = resolve_stream('type', 'Impeadance')  # type='Impeadance')
+    # create a new inlet to read from the stream
+    inlet = StreamInlet(streams[0])
+    # Keyword Paramters.
+    imps = []
+    channels = ['Fz', 'Cz', 'Pz', 'P4', 'P3', 'O1', 'O2']
+    controller = 0
+    num_chans = 7
+    if imp_limit is None:
+        imp_limit = 15
+    # Timed Imp Check Controller Operatin/
+    while controller == 0:
+        # Grab Impedances Data Chunks.
+        chunk, timestamps = inlet.pull_chunk(timeout=2, max_samples=500)
+        if timestamps:
+            imps = np.asarray(chunk)
+            imps = imps[:, 0:num_chans]
+            print(imps.shape)
+            imps = zero_mean(imps)
+            for j in range(1):
+                con_list = np.zeros(num_chans)  # , dtype=int
+                for i in range(num_chans):
+                    # Range value of channel durng pause.
+                    r_val = np.amax(imps[:, i]) - np.amin(imps[:, i])
+                    if r_val > imp_limit:
+                        print('----Channel Impedances Awaiting Stabilization: {0}  |  Range Value: {1}'.format(channels[i], r_val))
+                    elif r_val < imp_limit:
+                        con_list[i] = 1
+                        print('----Channel Impedances Stabilised: {0}  |  Range Value: {1}'.format(channels[i], r_val))
+                    if np.sum(con_list) == num_chans:
+                        controller = 1
+
+
+def imp_check(imp, Cz, limit, plotter, verbose):
+    import matplotlib.pyplot as plt
+    '''
+    This function provides basic stats on impedance values colected at the sequence level.
+    Can also kill the entire experiment if impendance ranges across sequence are greater
+    than a pre-specified LIMIT ('limit') variable.
+
+    Inputs:
+
+    imp: array of Samples x Channels containing impedances values over 2 sequence.
+    Cz: index of Cz electrode in imp matrix.
+    limit: kOhm limit on impedances range.
+    plotter: plots a graph for vidualizing Cz electroed impedances values over the trial.
+    verbose: if you want additional info set to 1 e.g. mean, variance, std, CV.
+
+    Note: if limit is overcome, then all impedances info and plts are returned.
+
+    Outputs:
+
+    True if below limit.
+    False and quit if above limit.
+
+    Example:
+
+    imp_check(imp, limit=5, plotter=1, verbose=1)
+
+    '''
+    'Checking Impedances Basic Stats.'
+    # Grab Cz Electrode.
+    x = imp[:, Cz]
+    ranger = np.amax(x)-np.amin(x)
+    print('Impedances Range OK: ', ranger)
+
+    if ranger > limit:
+        print('!!! CRITICAL: Impedances Range Exceeded Limit !!!')
+        if plotter == 1:
+            plt.plot(x)
+            plt.title('Cz Impedances')
+            plt.show()
+        if verbose == 1:
+            print('mean: ', np.mean(x))
+            print('variance: ', np.var(x))
+            print('std: ', np.std(x))
+            print('cv: ', np.std(x) / np.mean(x))
+        # Initiate imp_check pauser (see above).
+        imp_check_pauser(limit)
+        print('Initiating Impedance Check Pause Feature.')
+    # For an approximate answer, please estimate your coefficient of variation (CV=standard deviation / mean).
+    # As a rule of thumb, a CV >= 1 indicates a relatively high variation, while a CV < 1 can be considered low.
+    # A "good" SD depends if you expect your distribution to be centered or spread out around the mean.
+
+
 def name_gen(num_vals):
     # Source ID Randomised Namer.
     """Generate a random string of fixed length """
@@ -333,6 +468,26 @@ def list_gen(num_emoji, num_seqs, num_trials, num_iter):
     #     print('5th Seq: ', x[:, 4, 1]) '''
 
 
+def generic_pres(num_emoji, num_seqs, num_trials):
+    # Generates a randomised array to control emoji augemtnations, doesn't respect consecutive numbers as it's only to be used for
+    # emoji displays with 4 or less emoji.
+    'Not for use on less than 2 emojis, '
+
+    # Example:
+    # x = generic_pres(6, 5, 10)
+
+    x = np.zeros((num_emoji, num_seqs, num_trials))
+
+    for i in range(num_trials):
+        for j in range(num_seqs):
+            y = np.arange(num_emoji)
+            random.shuffle(y)
+            y = y.astype(int)
+            x[:, j, i] = y
+            x = x.astype(int)
+    return x
+
+
 def stamp_check(data):
     stamps = data[:, -1]
     reference = stamps[0]
@@ -370,7 +525,7 @@ def folder_gen(data_filename, labels_filename):
         print('Directory: ', labels_filename, ' Exists')
 
 
-def saver(filename, data, times):
+def saver(filename, data, times, direc):
     '''
     Save part of the buffer to a .npy file
 
@@ -384,7 +539,6 @@ def saver(filename, data, times):
     filename = filename + time_string + '.npy'
 
     # Save the name to the list of names
-    direc = './Data/P_3Data/'
     filename = direc + filename
 
     # Append Timestamp data to the EEG / IMP data matrix.

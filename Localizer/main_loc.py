@@ -11,7 +11,7 @@ import psychopy as pp
 from func_loc import save_labels, stamp_check, loc_shuffle, folder_gen, live_plotter
 from classes_loc import LslStream, LslBuffer, EmojiStimulus
 # Data Analysis Imports
-sys.path.insert(0, 'C:\P300_Project\Data_Analysis')
+sys.path.insert(0, 'D:/P300_Project/Data_Analysis')
 import ProBoy as pb
 
 '''
@@ -23,7 +23,6 @@ import ProBoy as pb
         Data dimenions = ??? Samples per channel.
         Sequence duration = ~????ms
         + Kill with Ctrl+Q
-
 '''
 
 # Main #
@@ -48,10 +47,10 @@ if __name__ == '__main__':
     num_emoji = np.int(len(emoji_list))
     num_trials = 20
     pres_duration = 2  # 5
-    aug_duration = 0.125
+    aug_duration = 0.05
     inter_trial_int = 1  # 3
     # Invert = Use Inversion Stimuli | Flash = Use Rectangle Stimuli.
-    aug = 'Flash'
+    aug = 'Invert'
     init = 'Exp'
     info = 'Details'
     window_scaling = 'Full'  # 0.5
@@ -160,7 +159,7 @@ if __name__ == '__main__':
         'Label Saving: .npy'
         save_file_name = '{0}_Trial_Labels'.format(t + 1)
         save_labels(t + 1, lab_direc, save_file_name,
-                    estimulus.loc_shuffle[t], estimulus.loc_shuffle)
+                    aug_list[t], aug_list)  # estimulus.loc_shuffle[t], estimulus.loc_shuffle)
         '-------------------------------------------'
         # Clear buffers
         # buffer.clear(names=True)
